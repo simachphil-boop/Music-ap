@@ -106,3 +106,25 @@ data class PlaylistSummary(
     val updatedAt: Long,
     val itemCount: Int,
 )
+
+/** Audio characteristics measured locally from the file (see AudioAnalyzer). Values are 0..1. */
+@Entity(tableName = "track_features")
+data class TrackFeaturesEntity(
+    @PrimaryKey val trackId: Long,
+    val energy: Float,
+    val dynamics: Float,
+    val brightness: Float,
+    val bpm: Float,
+    val tempoConfidence: Float,
+    val failed: Boolean,
+    val analyzedAt: Long,
+)
+
+/** Listening feedback used by the Wave recommender. */
+@Entity(tableName = "track_stats")
+data class TrackStatsEntity(
+    @PrimaryKey val trackId: Long,
+    val skips: Int,
+    val completions: Int,
+    val banned: Boolean,
+)

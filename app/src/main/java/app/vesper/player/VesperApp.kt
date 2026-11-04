@@ -8,6 +8,8 @@ import app.vesper.player.data.prefs.SettingsRepository
 import app.vesper.player.playback.AudioEffects
 import app.vesper.player.playback.PlayerConnection
 import app.vesper.player.playback.SleepTimer
+import app.vesper.player.data.wave.LibraryAnalyzer
+import app.vesper.player.data.wave.WaveEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +37,8 @@ class AppContainer(app: Application) {
     val audioEffects = AudioEffects()
     val player = PlayerConnection(app, settings, mainScope)
     val sleepTimer = SleepTimer(mainScope, player)
+    val analyzer = LibraryAnalyzer(app, database, appScope)
+    val wave = WaveEngine(database, player, mainScope)
 }
 
 val Context.appContainer: AppContainer

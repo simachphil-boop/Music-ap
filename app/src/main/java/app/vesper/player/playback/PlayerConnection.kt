@@ -46,6 +46,8 @@ data class PlayerUiState(
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val shuffle: Boolean = false,
     val stopAfterCurrent: Boolean = false,
+    /** Who built the current queue (e.g. "wave"); null for ordinary playback. */
+    val queueOwner: String? = null,
 ) {
     val current: QueueEntry? get() = queue.getOrNull(currentIndex)
     val hasNext: Boolean get() = currentIndex in 0 until queue.lastIndex || (repeatMode != Player.REPEAT_MODE_OFF && queue.isNotEmpty())
@@ -213,7 +215,13 @@ class PlayerConnection(
      * Replaces the queue. [shuffle] = true shuffles (random first track unless [startIndex] given
      * explicitly with [keepStart]), false plays in order, null follows the current shuffle mode.
      */
-    fun playTracks(tracks: List<TrackEntity>, startIndex: Int = 0, shuffle: Boolean? = null, keepStart: Boolean = false) {
+    fun playTracks(
+        tracks: List<TrackEntity>,
+        startIndex: Int = 0,
+        shuffle: Boolean? = null,
+        keepStart: Boolean = false,
+        owner: String? = null,
+    ) {
         if (tracks.isEmpty()) return
         val doShuffle = shuffle ?: shuffleOn
         val items = tracks.map { it.toMediaItem() }
@@ -229,9 +237,14 @@ class PlayerConnection(
                 if (shuffle == false) setShuffleFlag(false)
                 setOriginalOrder(tracks.map { it.id })
             }
+            _state.update { it.copy(queueOwner = owner) }
             c.prepare()
             c.play()
         }
+    }
+
+    fun notify(message: String) {
+        _messages.tryEmit(message)
     }
 
     fun playNext(tracks: List<TrackEntity>) {
@@ -247,7 +260,7 @@ class PlayerConnection(
         }
     }
 
-    fun addToQueue(tracks: List<TrackEntity>) {
+    fun addToQueue(tracks: List<TrackEntity>, silent: Boolean = false) {
         if (tracks.isEmpty()) return
         withController { c ->
             if (c.mediaItemCount == 0) {
@@ -256,7 +269,7 @@ class PlayerConnection(
             }
             c.addMediaItems(tracks.map { it.toMediaItem() })
             if (shuffleOn) setOriginalOrder(originalOrder + tracks.map { it.id })
-            _messages.tryEmit(if (tracks.size == 1) "Добавлено в очередь" else "В очередь добавлено: ${tracks.size}")
+            if (!silent) _messages.tryEmit(if (tracks.size == 1) "Добавлено в очередь" else "В очередь добавлено: ${tracks.size}")
         }
     }
 
@@ -303,6 +316,7 @@ class PlayerConnection(
     }
 
     fun clearQueue() = withController { c ->
+        _state.update { it.copy(queueOwner = null) }
         c.stop()
         c.clearMediaItems()
     }

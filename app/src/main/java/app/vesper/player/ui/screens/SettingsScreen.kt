@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.Image
@@ -130,6 +132,29 @@ fun SettingsScreen() {
                 Icons.Rounded.Headphones,
                 s.resumeOnConnect,
             ) { vm.setResumeOnConnect(it) }
+        }
+
+        item { Group("Волна") }
+        item {
+            val a by vm.analysis.collectAsStateWithLifecycle()
+            SettingRow(
+                title = "Анализ звучания",
+                subtitle = when {
+                    a.total == 0 -> "Появится, когда в библиотеке будет музыка"
+                    a.complete -> "Готово: ${a.analyzed} треков. Нажмите, чтобы проанализировать заново"
+                    else -> "Проанализировано ${a.analyzed} из ${a.total}" + if (a.running) " · идёт анализ" else ""
+                },
+                icon = Icons.Rounded.GraphicEq,
+                onClick = { vm.reanalyzeLibrary() },
+            )
+        }
+        item {
+            SettingRow(
+                title = "Сбросить обучение волны",
+                subtitle = "Забыть пропуски и треки с отметкой «Не нравится»",
+                icon = Icons.Rounded.RestartAlt,
+                onClick = { vm.wave.resetLearning() },
+            )
         }
 
         item { Group("Библиотека") }

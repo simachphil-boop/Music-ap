@@ -57,6 +57,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VolumeDown
 import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -193,7 +194,11 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 PressableIcon(Icons.Rounded.KeyboardArrowDown, "Свернуть", onClick = onCollapse, size = 30.dp)
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    OverlineText("Сейчас играет", color = c.ornament)
+                    val wave by vm.wave.state.collectAsStateWithLifecycle()
+                    OverlineText(
+                        if (wave.active) "Волна · ${wave.vibe?.title ?: "Моя волна"}" else "Сейчас играет",
+                        color = c.ornament,
+                    )
                     Text(
                         "${state.currentIndex + 1} из ${state.queue.size}" + if (current.album.isNotBlank()) "  ·  ${current.album}" else "",
                         style = MaterialTheme.typography.labelMedium,
@@ -257,6 +262,15 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             },
                         )
                     }
+                }
+                if (state.queueOwner == app.vesper.player.data.wave.WaveEngine.OWNER) {
+                    PressableIcon(
+                        androidx.compose.material.icons.Icons.Rounded.ThumbDown,
+                        "Не нравится",
+                        onClick = { vm.wave.dislike(current.trackId) },
+                        tint = c.textMuted,
+                        size = 22.dp,
+                    )
                 }
                 if (track != null) {
                     FavoriteButton(track.favorite, onToggle = { vm.toggleFavorite(track) }, size = 28.dp)

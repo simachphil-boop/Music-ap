@@ -119,7 +119,11 @@ fun HomeScreen() {
             return@LazyColumn
         }
 
-        if (player.current != null) {
+        if (lib.allTracks.isNotEmpty()) {
+            item(key = "wave") { WaveSection() }
+        }
+
+        if (player.current != null && player.queueOwner != app.vesper.player.data.wave.WaveEngine.OWNER) {
             item(key = "now") { NowPlayingCard(onOpen = { ui.playerExpanded = true }) }
         }
 

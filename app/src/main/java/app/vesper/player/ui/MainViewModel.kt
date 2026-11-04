@@ -15,6 +15,8 @@ import app.vesper.player.data.db.VideoEntity
 import app.vesper.player.data.media.ProbeResult
 import app.vesper.player.data.prefs.AppSettings
 import app.vesper.player.data.prefs.SortOrder
+import app.vesper.player.data.wave.AnalysisState
+import app.vesper.player.data.wave.Vibe
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +79,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val player = container.player
     val sleepTimer = container.sleepTimer
     val audioEffects = container.audioEffects
+    val wave = container.wave
+    val analysis: StateFlow<AnalysisState> =
+        container.analyzer.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalysisState())
+
+    fun startWave(vibe: Vibe) = wave.start(vibe)
+    fun reanalyzeLibrary() = container.analyzer.reanalyze()
 
     val settings: StateFlow<AppSettings> =
         settingsRepo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
@@ -195,6 +203,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val r = runCatching { repo.syncDeviceLibrary() }
+            container.analyzer.start()
             if (!silent) {
                 r.onSuccess { _messages.tryEmit("Библиотека обновлена: ${it.tracks} аудио, ${it.videos} видео") }
                     .onFailure { _messages.tryEmit("Не удалось просканировать устройство") }
@@ -207,7 +216,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _messages.tryEmit("Импорт…")
             runCatching { repo.importDocuments(uris) }
-                .onSuccess { _messages.tryEmit(it.message()) }
+                .onSuccess {
+                    _messages.tryEmit(it.message())
+                    container.analyzer.start()
+                }
                 .onFailure { _messages.tryEmit("Ошибка импорта: ${it.message ?: "неизвестная"}") }
         }
     }
@@ -217,7 +229,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _messages.tryEmit("Сканирую папку…")
             runCatching { repo.importTree(uri) }
-                .onSuccess { _messages.tryEmit(it.message()) }
+                .onSuccess {
+                    _messages.tryEmit(it.message())
+                    container.analyzer.start()
+                }
                 .onFailure { _messages.tryEmit("Ошибка импорта папки: ${it.message ?: "неизвестная"}") }
         }
     }
@@ -368,5 +383,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         player.connect()
+        container.analyzer.start()
     }
 }

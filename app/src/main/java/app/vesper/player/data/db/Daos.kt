@@ -16,6 +16,9 @@ interface TrackDao {
     @Query("SELECT * FROM tracks")
     suspend fun getAll(): List<TrackEntity>
 
+    @Query("SELECT COUNT(*) FROM tracks")
+    fun observeCount(): Flow<Int>
+
     @Query("SELECT * FROM tracks WHERE id = :id")
     suspend fun get(id: Long): TrackEntity?
 
@@ -181,4 +184,53 @@ abstract class QueueDao {
         clear()
         if (items.isNotEmpty()) insertAll(items)
     }
+}
+
+@Dao
+interface WaveDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFeatures(features: TrackFeaturesEntity)
+
+    @Query("SELECT * FROM track_features")
+    suspend fun allFeatures(): List<TrackFeaturesEntity>
+
+    @Query("SELECT COUNT(*) FROM track_features f INNER JOIN tracks t ON t.id = f.trackId")
+    fun observeAnalyzedCount(): Flow<Int>
+
+    @Query(
+        """
+        SELECT t.* FROM tracks t LEFT JOIN track_features f ON f.trackId = t.id
+        WHERE f.trackId IS NULL
+        ORDER BY t.favorite DESC, t.lastPlayedAt DESC, t.playCount DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun pendingTracks(limit: Int): List<TrackEntity>
+
+    @Query("DELETE FROM track_features")
+    suspend fun clearFeatures()
+
+    @Query("SELECT * FROM track_stats")
+    suspend fun allStats(): List<TrackStatsEntity>
+
+    @Query("INSERT OR IGNORE INTO track_stats (trackId, skips, completions, banned) VALUES (:trackId, 0, 0, 0)")
+    suspend fun ensureStats(trackId: Long)
+
+    @Query("UPDATE track_stats SET skips = skips + 1 WHERE trackId = :trackId")
+    suspend fun incrementSkips(trackId: Long)
+
+    @Query("UPDATE track_stats SET completions = completions + 1 WHERE trackId = :trackId")
+    suspend fun incrementCompletions(trackId: Long)
+
+    @Query("UPDATE track_stats SET banned = :banned WHERE trackId = :trackId")
+    suspend fun setBanned(trackId: Long, banned: Boolean)
+
+    @Query("DELETE FROM track_stats")
+    suspend fun clearStats()
+
+    @Query("SELECT * FROM track_features WHERE trackId = :trackId")
+    suspend fun features(trackId: Long): TrackFeaturesEntity?
+
+    @Query("SELECT COUNT(*) FROM track_stats WHERE banned = 1")
+    fun observeBannedCount(): Flow<Int>
 }

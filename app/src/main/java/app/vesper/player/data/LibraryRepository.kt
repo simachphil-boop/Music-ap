@@ -256,6 +256,18 @@ class LibraryRepository(
     suspend fun setTrackFavorite(id: Long, favorite: Boolean) = trackDao.setFavorite(id, favorite)
     suspend fun setVideoFavorite(id: Long, favorite: Boolean) = videoDao.setFavorite(id, favorite)
     suspend fun markPlayed(id: Long) = trackDao.markPlayed(id, System.currentTimeMillis())
+
+    /** Wave feedback: a track skipped within its first seconds. */
+    suspend fun recordSkip(id: Long) {
+        db.wave().ensureStats(id)
+        db.wave().incrementSkips(id)
+    }
+
+    /** Wave feedback: a track listened to the end. */
+    suspend fun recordCompletion(id: Long) {
+        db.wave().ensureStats(id)
+        db.wave().incrementCompletions(id)
+    }
     suspend fun saveVideoPosition(id: Long, positionMs: Long) =
         videoDao.savePosition(id, positionMs, System.currentTimeMillis())
 

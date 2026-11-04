@@ -212,6 +212,22 @@ class PlaybackService : MediaSessionService() {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) lastMarkedId = null
         }
 
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            val id = oldPosition.mediaItem?.mediaId?.toLongOrNull() ?: return
+            when (reason) {
+                Player.DISCONTINUITY_REASON_AUTO_TRANSITION ->
+                    container.appScope.launch { container.library.recordCompletion(id) }
+                Player.DISCONTINUITY_REASON_SEEK ->
+                    if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex && oldPosition.positionMs in 0 until 30_000) {
+                        container.appScope.launch { container.library.recordSkip(id) }
+                    }
+            }
+        }
+
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
             container.audioEffects.attach(audioSessionId)
         }
