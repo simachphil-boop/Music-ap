@@ -62,6 +62,13 @@ import app.vesper.player.data.download.LinkInfo
 import app.vesper.player.ui.LocalAppActions
 import app.vesper.player.ui.LocalBottomInset
 import app.vesper.player.ui.LocalViewModel
+import app.vesper.player.ui.LocalUi
+import app.vesper.player.ui.Routes
+import app.vesper.player.data.edit.CropAspect
+import app.vesper.player.data.edit.EditSpec
+import androidx.compose.material.icons.rounded.ContentCut
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.SliderDefaults
 import app.vesper.player.ui.components.OverlineText
 import app.vesper.player.ui.components.PressableIcon
 import app.vesper.player.ui.components.PrimaryButton
@@ -77,6 +84,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DownloadsScreen(onBack: () -> Unit) {
     val vm = LocalViewModel.current
+    val ui = LocalUi.current
     val actions = LocalAppActions.current
     val c = Vesper.colors
     val context = LocalContext.current
@@ -94,6 +102,9 @@ fun DownloadsScreen(onBack: () -> Unit) {
     var info by remember { mutableStateOf<LinkInfo?>(null) }
     var kind by rememberSaveable { mutableStateOf(DownloadKind.VIDEO) }
     var height by rememberSaveable { mutableStateOf<Int?>(null) }
+    var fragment by remember { mutableStateOf(false) }
+    var range by remember { mutableStateOf(0f..1f) }
+    var crop by remember { mutableStateOf<CropAspect?>(null) }
 
     fun lookup(target: String) {
         if (target.isBlank() || loading) return
@@ -105,13 +116,16 @@ fun DownloadsScreen(onBack: () -> Unit) {
                 .onSuccess {
                     info = it
                     height = it.heights.firstOrNull { h -> h <= 1080 }
+                    fragment = false
+                    range = 0f..1f
+                    crop = null
                 }
                 .onFailure { error = it.message ?: "Не удалось получить данные" }
             loading = false
         }
     }
 
-    // Link shared from another app ("Поделиться → Floya FM").
+    // Link shared from another app ("Поделиться → Floya Music").
     LaunchedEffect(shared) {
         val s = shared
         if (!s.isNullOrBlank()) {
@@ -131,7 +145,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
                 Text("Загрузки", style = MaterialTheme.typography.displaySmall, color = c.textPrimary)
                 Text(
                     "YouTube, VK, Rutube, TikTok, SoundCloud и сотни других сайтов, а также прямые ссылки на файлы. " +
-                        "Совет: в приложении YouTube нажмите «Поделиться» → Floya FM.",
+                        "Совет: в приложении YouTube нажмите «Поделиться» → Floya Music.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.textSecondary,
                 )
@@ -225,11 +239,63 @@ fun DownloadsScreen(onBack: () -> Unit) {
                                 }
                             }
                         }
+                        Spacer(Modifier.height(14.dp))
+                        OverlineText("Обрезка")
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            VesperChip("Целиком", !fragment, onClick = { fragment = false })
+                            VesperChip("Фрагмент", fragment, onClick = { fragment = true }, )
+                        }
+                        val totalMs = i.durationSec * 1000L
+                        AnimatedVisibility(visible = fragment && totalMs > 0) {
+                            Column {
+                                RangeSlider(
+                                    value = range,
+                                    onValueChange = { r -> if (r.endInclusive - r.start > 1000f / totalMs.coerceAtLeast(1)) range = r },
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = c.accentBright,
+                                        activeTrackColor = c.accent,
+                                        inactiveTrackColor = c.progressTrack,
+                                    ),
+                                )
+                                Row(Modifier.fillMaxWidth()) {
+                                    Text("с ${formatDuration((range.start * totalMs).toLong())}", style = MaterialTheme.typography.labelLarge, color = c.textPrimary)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("до ${formatDuration((range.endInclusive * totalMs).toLong())}", style = MaterialTheme.typography.labelLarge, color = c.textPrimary)
+                                }
+                                Text("Скачается только этот кусок — быстрее и меньше трафика.", style = MaterialTheme.typography.bodySmall, color = c.textMuted)
+                            }
+                        }
+                        AnimatedVisibility(visible = kind == DownloadKind.VIDEO) {
+                            Column {
+                                Spacer(Modifier.height(12.dp))
+                                OverlineText("Кадрирование")
+                                Spacer(Modifier.height(6.dp))
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    VesperChip("Без кадрирования", crop == null, onClick = { crop = null })
+                                    CropAspect.entries.forEach { a -> VesperChip(a.label, crop == a, onClick = { crop = a }) }
+                                }
+                                if (crop != null) {
+                                    Text(
+                                        "Кадр берётся по центру. Точно выставить рамку можно после загрузки: «Обрезать и кадрировать».",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = c.textMuted,
+                                        modifier = Modifier.padding(top = 6.dp),
+                                    )
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(16.dp))
                         PrimaryButton(
                             "Скачать",
                             onClick = {
-                                vm.downloader.download(i, kind, if (kind == DownloadKind.VIDEO) height else null)
+                                val totalMs2 = i.durationSec * 1000L
+                                val edit = EditSpec(
+                                    startMs = if (fragment && range.start > 0f) (range.start * totalMs2).toLong() else 0L,
+                                    endMs = if (fragment && range.endInclusive < 1f) (range.endInclusive * totalMs2).toLong() else 0L,
+                                    crop = if (kind == DownloadKind.VIDEO) crop else null,
+                                )
+                                vm.downloader.download(i, kind, if (kind == DownloadKind.VIDEO) height else null, edit)
                                 info = null
                                 url = ""
                             },
@@ -252,6 +318,9 @@ fun DownloadsScreen(onBack: () -> Unit) {
             items(tasks, key = { it.id }) { t ->
                 DownloadRow(
                     task = t,
+                    onEdit = {
+                        t.mediaId?.let { id -> ui.open(Routes.editor(audio = t.kind == DownloadKind.AUDIO, id = id)) }
+                    },
                     onCancel = { vm.downloader.cancel(t.id) },
                     onOpen = {
                         val id = t.mediaId ?: return@DownloadRow
@@ -296,7 +365,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DownloadRow(task: DownloadTask, onCancel: () -> Unit, onOpen: () -> Unit, onRetry: () -> Unit) {
+private fun DownloadRow(task: DownloadTask, onEdit: () -> Unit, onCancel: () -> Unit, onOpen: () -> Unit, onRetry: () -> Unit) {
     val c = Vesper.colors
     Row(
         Modifier
@@ -356,6 +425,8 @@ private fun DownloadRow(task: DownloadTask, onCancel: () -> Unit, onOpen: () -> 
         }
         when {
             task.active -> PressableIcon(Icons.Rounded.Close, "Отменить", onClick = onCancel, tint = c.textMuted, size = 20.dp)
+            task.status == DownloadStatus.DONE && task.mediaId != null ->
+                PressableIcon(Icons.Rounded.ContentCut, "Обрезать", onClick = onEdit, tint = c.accentBright, size = 20.dp)
             task.status == DownloadStatus.DONE -> Icon(Icons.Rounded.CheckCircle, null, tint = c.accentBright, modifier = Modifier.padding(12.dp).size(22.dp))
             task.status == DownloadStatus.FAILED -> PressableIcon(Icons.Rounded.Refresh, "Повторить", onClick = onRetry, tint = c.accentBright, size = 20.dp)
             else -> PressableIcon(Icons.Rounded.PlayArrow, "Открыть", onClick = onOpen, tint = c.textMuted, size = 20.dp, enabled = false)

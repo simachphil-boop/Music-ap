@@ -93,6 +93,9 @@ object Routes {
     const val THEMES = "themes"
     const val EQUALIZER = "equalizer"
     const val DOWNLOADS = "downloads"
+    const val EDITOR = "editor/{kind}/{id}"
+
+    fun editor(audio: Boolean, id: Long) = "editor/${if (audio) "audio" else "video"}/$id"
     const val GROUP = "group/{type}/{key}"
     const val PLAYLIST = "playlist/{id}"
 

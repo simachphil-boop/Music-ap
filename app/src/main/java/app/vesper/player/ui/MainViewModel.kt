@@ -86,8 +86,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun startWave(vibe: Vibe) = wave.start(vibe)
 
     val downloader = container.downloader
+    val editor = container.editor
 
-    /** Link received via "Share → Floya FM"; consumed by the downloads screen. */
+    /** Link received via "Share → Floya Music"; consumed by the downloads screen. */
     val sharedUrl = MutableStateFlow<String?>(null)
 
     fun updateDownloadEngine() {

@@ -99,7 +99,7 @@ fun HomeScreen() {
                     EmptyState(
                         icon = Icons.Rounded.Lock,
                         title = "Нужен доступ к медиатеке",
-                        message = "Разрешите Floya FM читать музыку и видео на устройстве — или импортируйте отдельные файлы и папки вручную. Всё работает офлайн.",
+                        message = "Разрешите Floya Music читать музыку и видео на устройстве — или импортируйте отдельные файлы и папки вручную. Всё работает офлайн.",
                         primaryLabel = "Разрешить доступ",
                         onPrimary = actions.requestPermissions,
                         secondaryLabel = "Импортировать файлы",
@@ -109,7 +109,7 @@ fun HomeScreen() {
                     EmptyState(
                         icon = Icons.Rounded.LibraryAdd,
                         title = "Библиотека пуста",
-                        message = "На устройстве не нашлось аудио и видео. Импортируйте файлы или целую папку — Floya FM запомнит их без копирования.",
+                        message = "На устройстве не нашлось аудио и видео. Импортируйте файлы или целую папку — Floya Music запомнит их без копирования.",
                         primaryLabel = "Импортировать файлы",
                         onPrimary = actions.importAudio,
                         secondaryLabel = "Выбрать папку",
@@ -272,7 +272,7 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = if (ornament == Ornament.NEON) "FM" else "fm",
+                text = if (ornament == Ornament.NEON) "MUSIC" else "music",
                 style = MaterialTheme.typography.headlineSmall,
                 color = c.accentBright,
                 modifier = Modifier.padding(bottom = 6.dp),

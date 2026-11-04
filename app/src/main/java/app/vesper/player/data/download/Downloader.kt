@@ -10,6 +10,10 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.core.content.ContextCompat
 import app.vesper.player.data.LibraryRepository
+import app.vesper.player.data.edit.EditSpec
+import app.vesper.player.data.edit.FfmpegTool
+import app.vesper.player.data.edit.MediaEditor
+import app.vesper.player.data.edit.MediaPublisher
 import app.vesper.player.data.media.ProbeResult
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -54,6 +58,7 @@ data class DownloadTask(
     val etaSec: Long = 0,
     val error: String? = null,
     val mediaId: Long? = null,
+    val edit: EditSpec? = null,
 ) {
     val active: Boolean get() = status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING || status == DownloadStatus.PROCESSING
 }
@@ -87,10 +92,7 @@ class Downloader(
         if (_engine.value.ready) return@withLock true
         _engine.update { it.copy(preparing = true) }
         try {
-            withContext(Dispatchers.IO) {
-                YoutubeDL.getInstance().init(context)
-                FFmpeg.getInstance().init(context)
-            }
+            if (!FfmpegTool.init(context)) error("init failed")
             val version = runCatching { YoutubeDL.getInstance().version(context) }.getOrNull()
             _engine.update { it.copy(ready = true, version = version) }
             true
@@ -154,7 +156,7 @@ class Downloader(
         }
     }
 
-    fun download(info: LinkInfo, kind: DownloadKind, maxHeight: Int?) {
+    fun download(info: LinkInfo, kind: DownloadKind, maxHeight: Int?, edit: EditSpec? = null) {
         val task = DownloadTask(
             id = UUID.randomUUID().toString(),
             url = info.url,
@@ -162,6 +164,7 @@ class Downloader(
             thumbnail = info.thumbnail,
             kind = kind,
             maxHeight = maxHeight,
+            edit = edit?.takeIf { !it.isNoop },
         )
         _tasks.update { listOf(task) + it }
         DownloadService.start(context)
@@ -189,6 +192,11 @@ class Downloader(
             val request = YoutubeDLRequest(task.url).apply {
                 addOption("--no-playlist")
                 addOption("--no-mtime")
+                task.edit?.takeIf { it.trims }?.let { e ->
+                    // Fetch only the chosen fragment — saves traffic and time.
+                    val end = if (e.endMs > 0) FfmpegTool.seconds(e.endMs) else "inf"
+                    addOption("--download-sections", "*${FfmpegTool.seconds(e.startMs)}-$end")
+                }
                 addOption("-o", workDir.absolutePath + "/%(title).120B.%(ext)s")
                 if (task.kind == DownloadKind.AUDIO) {
                     addOption("-f", "bestaudio/best")
@@ -225,12 +233,31 @@ class Downloader(
             updateTask(task.id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f) }
 
             val skip = setOf("part", "ytdl", "jpg", "jpeg", "png", "webp", "json", "temp", "tmp")
-            val file = workDir.listFiles()
+            var file = workDir.listFiles()
                 ?.filter { it.isFile && it.extension.lowercase() !in skip && !it.name.endsWith(".part") }
                 ?.maxByOrNull { it.length() }
                 ?: error("Файл не получен — возможно, ролик недоступен")
 
-            val uri = publish(file, task.kind)
+            val crop = task.edit?.crop
+            if (task.kind == DownloadKind.VIDEO && crop != null) {
+                updateTask(task.id) { it.copy(status = DownloadStatus.PROCESSING, progress = 0f) }
+                val cropped = File(workDir, "cropped_" + file.nameWithoutExtension.take(100) + ".mp4")
+                val duration = runCatching {
+                    android.media.MediaMetadataRetriever().run {
+                        setDataSource(file.absolutePath)
+                        val d = extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                        release()
+                        d
+                    }
+                }.getOrDefault(0L)
+                MediaEditor.render(context, file, cropped, false, EditSpec(crop = crop, offset = task.edit?.offset ?: 0.5f), duration) { p ->
+                    updateTask(task.id) { it.copy(progress = p) }
+                }
+                file.delete()
+                file = File(workDir, file.nameWithoutExtension.take(100) + ".mp4").also { cropped.renameTo(it) }
+            }
+
+            val uri = MediaPublisher.publish(context, file, task.kind == DownloadKind.AUDIO)
             val mediaId = when (val r = library.importSingle(uri)) {
                 is ProbeResult.Audio -> r.track.id
                 is ProbeResult.Video -> r.video.id
@@ -247,55 +274,6 @@ class Downloader(
         } finally {
             workDir.deleteRecursively()
         }
-    }
-
-    /**
-     * Moves the finished file into shared storage (Movies/Floya or Music/Floya) so it
-     * survives app removal and is visible to other apps.
-     */
-    private fun publish(file: File, kind: DownloadKind): Uri {
-        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
-            ?: if (kind == DownloadKind.AUDIO) "audio/mpeg" else "video/mp4"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val resolver = context.contentResolver
-            val collection = if (kind == DownloadKind.AUDIO) {
-                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            }
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                put(
-                    MediaStore.MediaColumns.RELATIVE_PATH,
-                    (if (kind == DownloadKind.AUDIO) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES) + "/Floya",
-                )
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(collection, values) ?: error("Не удалось сохранить файл")
-            try {
-                resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
-                    ?: error("Не удалось сохранить файл")
-                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-            } catch (e: Exception) {
-                resolver.delete(uri, null, null)
-                throw e
-            }
-            // Same URI form the library scanner produces, so a later rescan doesn't duplicate it.
-            val id = ContentUris.parseId(uri)
-            return ContentUris.withAppendedId(
-                if (kind == DownloadKind.AUDIO) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                id,
-            )
-        }
-        // Android 9: keep the file in the app's media folder (no storage permission needed).
-        val dirType = if (kind == DownloadKind.AUDIO) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES
-        val dir = File(ContextCompat.getExternalFilesDirs(context, dirType).firstOrNull() ?: context.filesDir, "Floya").apply { mkdirs() }
-        var target = File(dir, file.name)
-        var n = 1
-        while (target.exists()) target = File(dir, "${file.nameWithoutExtension} ($n).${file.extension}").also { n++ }
-        file.copyTo(target)
-        return Uri.fromFile(target)
     }
 
     companion object {

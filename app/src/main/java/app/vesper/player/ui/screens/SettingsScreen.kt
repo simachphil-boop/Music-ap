@@ -78,7 +78,7 @@ fun SettingsScreen() {
     val theme = ThemeRegistry.byId(s.themeId)
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
-        item { ScreenHeader("Настройки", subtitle = "Floya FM ${BuildConfig.VERSION_NAME}") }
+        item { ScreenHeader("Настройки", subtitle = "Floya Music ${BuildConfig.VERSION_NAME}") }
 
         item { Group("Оформление") }
         item {
@@ -213,7 +213,7 @@ fun SettingsScreen() {
         item { Group("О приложении") }
         item {
             SettingRow(
-                title = "Floya FM ${BuildConfig.VERSION_NAME}",
+                title = "Floya Music ${BuildConfig.VERSION_NAME}",
                 subtitle = "Работает полностью офлайн. Библиотека, плейлисты и настройки хранятся только на этом устройстве; файлы не копируются.",
                 icon = Icons.Rounded.Info,
             )

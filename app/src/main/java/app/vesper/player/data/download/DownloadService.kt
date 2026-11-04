@@ -58,7 +58,7 @@ class DownloadService : Service() {
     private fun build(text: String, progress: Int, indeterminate: Boolean) =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Floya FM · загрузка")
+            .setContentTitle("Floya Music · загрузка")
             .setContentText(text)
             .setOnlyAlertOnce(true)
             .setOngoing(true)

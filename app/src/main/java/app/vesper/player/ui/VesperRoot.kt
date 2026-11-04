@@ -204,6 +204,19 @@ private fun VesperNavHost(nav: NavHostController) {
         composable(Routes.SETTINGS) { SettingsScreen() }
         composable(Routes.THEMES) { ThemePickerScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.EQUALIZER) { EqualizerScreen(onBack = { nav.popBackStack() }) }
+        composable(
+            Routes.EDITOR,
+            arguments = listOf(
+                navArgument("kind") { type = NavType.StringType },
+                navArgument("id") { type = NavType.LongType },
+            ),
+        ) { entry ->
+            app.vesper.player.ui.screens.EditorScreen(
+                audio = entry.arguments?.getString("kind") == "audio",
+                id = entry.arguments?.getLong("id") ?: 0L,
+                onBack = { nav.popBackStack() },
+            )
+        }
         composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen(onBack = { nav.popBackStack() }) }
         composable(
             Routes.GROUP,

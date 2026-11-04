@@ -55,7 +55,7 @@
                 <data android:scheme="file" />
                 <data android:mimeType="audio/*" />
             </intent-filter>
-            <!-- "Share → Floya FM" from YouTube, VK, browsers… -->
+            <!-- "Share → Floya Music" from YouTube, VK, browsers… -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

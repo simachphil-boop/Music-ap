@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
@@ -91,6 +92,7 @@ fun GlobalSheets() {
                 add(SheetAction(Icons.Rounded.PlaylistAdd, "Добавить в видеоплейлист") {
                     ui.showAddToPlaylist(listOf(video.id), PlaylistKind.VIDEO)
                 })
+                add(SheetAction(Icons.Rounded.ContentCut, "Обрезать и кадрировать") { ui.open(Routes.editor(audio = false, id = video.id)) })
                 add(SheetAction(Icons.Rounded.Edit, "Переименовать") { renaming = true })
                 extra?.let { e -> add(SheetAction(Icons.Rounded.RemoveCircleOutline, e.label, destructive = true, onClick = e.onClick)) }
                 if (video.source == MediaSource.IMPORTED) {
@@ -165,6 +167,7 @@ private fun TrackOptionsSheet(track: TrackEntity, extra: ExtraTrackAction?, onDi
             }
             add(SheetAction(Icons.Rounded.Person, "Перейти к исполнителю") { ui.openGroup(GroupType.ARTIST, track.artist) })
             add(SheetAction(Icons.Rounded.Edit, "Изменить название и исполнителя") { ui.editTrack = track })
+            add(SheetAction(Icons.Rounded.ContentCut, "Обрезать") { ui.open(Routes.editor(audio = true, id = track.id)) })
             add(SheetAction(Icons.Rounded.Info, "Сведения о файле") { ui.trackInfo = track })
             extra?.let { e -> add(SheetAction(Icons.Rounded.RemoveCircleOutline, e.label, destructive = true, onClick = e.onClick)) }
             if (track.source == MediaSource.IMPORTED) {
@@ -234,7 +237,7 @@ private fun EditTrackDialog(
         VesperTextField(album, { album = it }, "Альбом")
         VesperTextField(genre, { genre = it }, "Жанр")
         Text(
-            "Изменения хранятся в библиотеке Floya FM; файл на устройстве не перезаписывается.",
+            "Изменения хранятся в библиотеке Floya Music; файл на устройстве не перезаписывается.",
             style = MaterialTheme.typography.bodySmall,
             color = Vesper.colors.textMuted,
         )

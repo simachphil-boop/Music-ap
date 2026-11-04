@@ -28,13 +28,13 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk dist/FloyaFM-${{ github.run_number }}-arm64.apk
-          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk dist/FloyaFM-${{ github.run_number }}-armv7.apk
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk dist/FloyaMusic-${{ github.run_number }}-arm64.apk
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk dist/FloyaMusic-${{ github.run_number }}-armv7.apk
           ls -la dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FloyaFM-apk
+          name: FloyaMusic-apk
           path: dist/*.apk
 
       - name: Publish rolling release
@@ -42,7 +42,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Floya FM build ${{ github.run_number }}
+          name: Floya Music build ${{ github.run_number }}
           body: |
             Automated build from ${{ github.sha }}
             arm64 — для большинства современных телефонов; armv7 — для старых 32-битных.

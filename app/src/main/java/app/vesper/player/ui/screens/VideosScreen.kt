@@ -143,7 +143,7 @@ fun VideosScreen() {
                     EmptyState(
                         Icons.Rounded.VideoLibrary,
                         "Видео пока нет",
-                        "На устройстве не найдено видео. Импортируйте файлы MP4, MKV или WEBM — они откроются прямо в Floya FM.",
+                        "На устройстве не найдено видео. Импортируйте файлы MP4, MKV или WEBM — они откроются прямо в Floya Music.",
                         primaryLabel = "Импортировать видео",
                         onPrimary = actions.importVideo,
                     )
