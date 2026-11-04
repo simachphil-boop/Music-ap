@@ -13,8 +13,8 @@ android {
         applicationId = "app.vesper.player"
         minSdk = 28
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -70,6 +70,18 @@ android {
     }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // yt-dlp's bundled Python/FFmpeg must be extracted to disk to run.
+        jniLibs { useLegacyPackaging = true }
+    }
+
+    // One APK per CPU type keeps each download about half the size.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
     }
 }
 
@@ -107,4 +119,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.reorderable)
+    implementation(libs.ytdl.library)
+    implementation(libs.ytdl.ffmpeg)
 }

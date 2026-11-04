@@ -96,6 +96,13 @@ fun VesperRoot(vm: MainViewModel, actions: AppActions, openPlayerSignal: Int) {
     val hasQueue = playerState.queue.isNotEmpty()
     val snackbar = remember { SnackbarHostState() }
 
+    val shared by vm.sharedUrl.collectAsStateWithLifecycle()
+    LaunchedEffect(shared) {
+        if (shared != null && nav.currentBackStackEntry?.destination?.route != Routes.DOWNLOADS) {
+            ui.playerExpanded = false
+            ui.open(Routes.DOWNLOADS)
+        }
+    }
     LaunchedEffect(openPlayerSignal) {
         if (openPlayerSignal > 0) ui.playerExpanded = true
     }
@@ -197,6 +204,7 @@ private fun VesperNavHost(nav: NavHostController) {
         composable(Routes.SETTINGS) { SettingsScreen() }
         composable(Routes.THEMES) { ThemePickerScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.EQUALIZER) { EqualizerScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen(onBack = { nav.popBackStack() }) }
         composable(
             Routes.GROUP,
             arguments = listOf(

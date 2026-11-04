@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_OPEN_PLAYER = "app.vesper.player.action.OPEN_PLAYER"
+        const val ACTION_OPEN_DOWNLOADS = "app.vesper.player.action.OPEN_DOWNLOADS"
         private const val PREFS = "vesper_runtime"
         private const val KEY_ASKED = "permissions_asked"
     }
@@ -130,6 +131,12 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         when (intent.action) {
             ACTION_OPEN_PLAYER -> openPlayerSignal++
+            ACTION_OPEN_DOWNLOADS -> vm.sharedUrl.value = ""
+            Intent.ACTION_SEND -> {
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                val url = app.vesper.player.data.download.Downloader.extractUrl(text)
+                if (url != null) vm.sharedUrl.value = url else vm.message("В сообщении нет ссылки")
+            }
             Intent.ACTION_VIEW -> {
                 val data = intent.data ?: return
                 val type = intent.type ?: contentResolver.getType(data).orEmpty()

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lock
@@ -82,6 +83,7 @@ fun VideosScreen() {
             title = "Видео",
             subtitle = "${videosCount(vids.all.size)} · ${formatTotalDuration(vids.all.sumOf { it.durationMs })}",
         ) {
+            PressableIcon(Icons.Rounded.Download, "Скачать по ссылке", onClick = { ui.open(app.vesper.player.ui.Routes.DOWNLOADS) })
             PressableIcon(Icons.Rounded.Search, "Поиск", onClick = { searching = true })
             PressableIcon(Icons.Rounded.Sort, "Сортировка", onClick = { sortSheet = true })
             PressableIcon(Icons.Rounded.Add, "Добавить видео", onClick = { importSheet = true })
@@ -141,7 +143,7 @@ fun VideosScreen() {
                     EmptyState(
                         Icons.Rounded.VideoLibrary,
                         "Видео пока нет",
-                        "На устройстве не найдено видео. Импортируйте файлы MP4, MKV или WEBM — они откроются прямо в Vesper.",
+                        "На устройстве не найдено видео. Импортируйте файлы MP4, MKV или WEBM — они откроются прямо в Floya FM.",
                         primaryLabel = "Импортировать видео",
                         onPrimary = actions.importVideo,
                     )

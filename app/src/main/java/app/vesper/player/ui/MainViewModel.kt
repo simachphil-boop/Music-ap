@@ -84,6 +84,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         container.analyzer.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AnalysisState())
 
     fun startWave(vibe: Vibe) = wave.start(vibe)
+
+    val downloader = container.downloader
+
+    /** Link received via "Share → Floya FM"; consumed by the downloads screen. */
+    val sharedUrl = MutableStateFlow<String?>(null)
+
+    fun updateDownloadEngine() {
+        viewModelScope.launch { _messages.tryEmit(downloader.updateEngine()) }
+    }
     fun reanalyzeLibrary() = container.analyzer.reanalyze()
 
     val settings: StateFlow<AppSettings> =

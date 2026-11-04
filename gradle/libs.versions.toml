@@ -15,6 +15,7 @@ splashscreen = "1.0.1"
 documentfile = "1.0.1"
 palette = "1.0.0"
 reorderable = "2.4.3"
+ytdl = "0.18.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -45,6 +46,8 @@ androidx-palette = { group = "androidx.palette", name = "palette-ktx", version.r
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-guava = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-guava", version.ref = "coroutines" }
 reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version.ref = "reorderable" }
+ytdl-library = { group = "io.github.junkfood02.youtubedl-android", name = "library", version.ref = "ytdl" }
+ytdl-ffmpeg = { group = "io.github.junkfood02.youtubedl-android", name = "ffmpeg", version.ref = "ytdl" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

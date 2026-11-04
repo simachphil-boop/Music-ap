@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -98,7 +99,7 @@ fun HomeScreen() {
                     EmptyState(
                         icon = Icons.Rounded.Lock,
                         title = "Нужен доступ к медиатеке",
-                        message = "Разрешите Vesper читать музыку и видео на устройстве — или импортируйте отдельные файлы и папки вручную. Всё работает офлайн.",
+                        message = "Разрешите Floya FM читать музыку и видео на устройстве — или импортируйте отдельные файлы и папки вручную. Всё работает офлайн.",
                         primaryLabel = "Разрешить доступ",
                         onPrimary = actions.requestPermissions,
                         secondaryLabel = "Импортировать файлы",
@@ -108,7 +109,7 @@ fun HomeScreen() {
                     EmptyState(
                         icon = Icons.Rounded.LibraryAdd,
                         title = "Библиотека пуста",
-                        message = "На устройстве не нашлось аудио и видео. Импортируйте файлы или целую папку — Vesper запомнит их без копирования.",
+                        message = "На устройстве не нашлось аудио и видео. Импортируйте файлы или целую папку — Floya FM запомнит их без копирования.",
                         primaryLabel = "Импортировать файлы",
                         onPrimary = actions.importAudio,
                         secondaryLabel = "Выбрать папку",
@@ -139,7 +140,7 @@ fun HomeScreen() {
                     if (lib.favorites.isEmpty()) vm.message("В избранном пока пусто — отмечайте треки сердцем")
                     else vm.player.playTracks(lib.favorites, 0, shuffle = false)
                 }
-                QuickAction(Icons.Rounded.CreateNewFolder, "Импорт", Modifier.weight(1f)) { actions.importFolder() }
+                QuickAction(Icons.Rounded.Download, "По ссылке", Modifier.weight(1f)) { ui.open(Routes.DOWNLOADS) }
             }
         }
 
@@ -261,13 +262,22 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
     val c = Vesper.colors
     val ornament = Vesper.theme.ornament
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 18.dp)) {
-        OverlineText(greeting(), color = c.ornament)
+        OverlineText("${greeting()}, Floyachieee", color = c.ornament)
         Spacer(Modifier.height(2.dp))
-        Text(
-            text = if (ornament == Ornament.NEON) "VESPER" else "Vesper",
-            style = MaterialTheme.typography.displayMedium,
-            color = c.textPrimary,
-        )
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = if (ornament == Ornament.NEON) "FLOYA" else "Floya",
+                style = MaterialTheme.typography.displayMedium,
+                color = c.textPrimary,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (ornament == Ornament.NEON) "FM" else "fm",
+                style = MaterialTheme.typography.headlineSmall,
+                color = c.accentBright,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
         Text(
             "${tracksCount(trackCount)}  ·  ${videosCount(videoCount)}",
             style = MaterialTheme.typography.bodySmall,

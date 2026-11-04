@@ -10,6 +10,7 @@ import app.vesper.player.playback.PlayerConnection
 import app.vesper.player.playback.SleepTimer
 import app.vesper.player.data.wave.LibraryAnalyzer
 import app.vesper.player.data.wave.WaveEngine
+import app.vesper.player.data.download.Downloader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +40,7 @@ class AppContainer(app: Application) {
     val sleepTimer = SleepTimer(mainScope, player)
     val analyzer = LibraryAnalyzer(app, database, appScope)
     val wave = WaveEngine(database, player, mainScope)
+    val downloader = Downloader(app, library, appScope)
 }
 
 val Context.appContainer: AppContainer

@@ -234,7 +234,7 @@ private fun EditTrackDialog(
         VesperTextField(album, { album = it }, "Альбом")
         VesperTextField(genre, { genre = it }, "Жанр")
         Text(
-            "Изменения хранятся в библиотеке Vesper; файл на устройстве не перезаписывается.",
+            "Изменения хранятся в библиотеке Floya FM; файл на устройстве не перезаписывается.",
             style = MaterialTheme.typography.bodySmall,
             color = Vesper.colors.textMuted,
         )

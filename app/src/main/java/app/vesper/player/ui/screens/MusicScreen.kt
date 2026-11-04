@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -233,6 +234,7 @@ private fun LibraryEmpty(onImport: () -> Unit) {
 @Composable
 fun ImportSheet(onDismiss: () -> Unit) {
     val vm = LocalViewModel.current
+    val ui = LocalUi.current
     val actions = LocalAppActions.current
     ActionSheet(
         onDismiss = onDismiss,
@@ -240,6 +242,7 @@ fun ImportSheet(onDismiss: () -> Unit) {
             SheetAction(Icons.Rounded.Refresh, "Сканировать устройство") {
                 if (vm.hasAudioPermission() || vm.hasVideoPermission()) vm.rescan() else actions.requestPermissions()
             },
+            SheetAction(Icons.Rounded.Download, "Скачать по ссылке") { ui.open(app.vesper.player.ui.Routes.DOWNLOADS) },
             SheetAction(Icons.Rounded.MusicNote, "Импортировать аудиофайлы") { actions.importAudio() },
             SheetAction(Icons.Rounded.Movie, "Импортировать видео") { actions.importVideo() },
             SheetAction(Icons.Rounded.CreateNewFolder, "Импортировать папку") { actions.importFolder() },

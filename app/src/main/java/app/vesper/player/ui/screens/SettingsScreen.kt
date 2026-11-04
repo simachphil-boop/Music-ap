@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.RestartAlt
@@ -77,7 +78,7 @@ fun SettingsScreen() {
     val theme = ThemeRegistry.byId(s.themeId)
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
-        item { ScreenHeader("Настройки", subtitle = "Vesper ${BuildConfig.VERSION_NAME}") }
+        item { ScreenHeader("Настройки", subtitle = "Floya FM ${BuildConfig.VERSION_NAME}") }
 
         item { Group("Оформление") }
         item {
@@ -182,6 +183,15 @@ fun SettingsScreen() {
                 s.skipShortAudio,
             ) { vm.setSkipShortAudio(it) }
         }
+        item {
+            SettingRow(
+                "Скачать по ссылке",
+                subtitle = "Видео и музыка с YouTube, VK и других сайтов",
+                icon = Icons.Rounded.Download,
+                onClick = { ui.open(Routes.DOWNLOADS) },
+                trailing = { Chevron() },
+            )
+        }
         item { SettingRow("Импортировать аудиофайлы", subtitle = "MP3, FLAC, M4A, AAC, OGG, OPUS, WAV", icon = Icons.Rounded.MusicNote, onClick = actions.importAudio) }
         item { SettingRow("Импортировать видео", subtitle = "MP4, MKV, WEBM, 3GP, MOV", icon = Icons.Rounded.Movie, onClick = actions.importVideo) }
         item { SettingRow("Импортировать папку", subtitle = "Все аудио и видео из выбранной папки", icon = Icons.Rounded.CreateNewFolder, onClick = actions.importFolder) }
@@ -203,7 +213,7 @@ fun SettingsScreen() {
         item { Group("О приложении") }
         item {
             SettingRow(
-                title = "Vesper ${BuildConfig.VERSION_NAME}",
+                title = "Floya FM ${BuildConfig.VERSION_NAME}",
                 subtitle = "Работает полностью офлайн. Библиотека, плейлисты и настройки хранятся только на этом устройстве; файлы не копируются.",
                 icon = Icons.Rounded.Info,
             )

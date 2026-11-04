@@ -9,3 +9,9 @@
 -dontwarn javax.lang.model.**
 -dontwarn kotlin.annotations.jvm.**
 -dontwarn org.jspecify.annotations.**
+# youtubedl-android (Jackson mapping of yt-dlp JSON)
+-keep class com.yausername.** { *; }
+-keep class com.fasterxml.jackson.** { *; }
+-dontwarn com.fasterxml.jackson.databind.**
+-dontwarn java.beans.**
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod

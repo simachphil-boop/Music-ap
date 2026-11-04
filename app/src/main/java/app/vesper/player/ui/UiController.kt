@@ -92,6 +92,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val THEMES = "themes"
     const val EQUALIZER = "equalizer"
+    const val DOWNLOADS = "downloads"
     const val GROUP = "group/{type}/{key}"
     const val PLAYLIST = "playlist/{id}"
 

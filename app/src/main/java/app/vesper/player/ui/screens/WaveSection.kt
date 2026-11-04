@@ -161,7 +161,7 @@ fun WaveSection() {
         if (analysis.total > 0 && !analysis.complete) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp)) {
                 Text(
-                    "Vesper изучает звучание библиотеки · ${analysis.analyzed} из ${analysis.total}",
+                    "Floya изучает звучание библиотеки · ${analysis.analyzed} из ${analysis.total}",
                     style = MaterialTheme.typography.bodySmall,
                     color = c.textMuted,
                 )
