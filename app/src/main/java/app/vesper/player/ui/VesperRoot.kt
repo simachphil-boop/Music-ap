@@ -217,6 +217,11 @@ private fun VesperNavHost(nav: NavHostController) {
                 onBack = { nav.popBackStack() },
             )
         }
+        composable(Routes.LOGIN, arguments = listOf(navArgument("site") { type = NavType.StringType })) { entry ->
+            val site = runCatching { app.vesper.player.data.download.CookieSite.valueOf(entry.arguments?.getString("site").orEmpty()) }
+                .getOrDefault(app.vesper.player.data.download.CookieSite.YOUTUBE)
+            app.vesper.player.ui.screens.LoginScreen(site, onBack = { nav.popBackStack() })
+        }
         composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen(onBack = { nav.popBackStack() }) }
         composable(
             Routes.GROUP,

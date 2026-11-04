@@ -59,6 +59,12 @@ class MainActivity : ComponentActivity() {
         vm.importTree(uri)
     }
 
+    private var pendingTextCallback: ((Uri?) -> Unit)? = null
+    private val textPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        pendingTextCallback?.invoke(uri)
+        pendingTextCallback = null
+    }
+
     private val imagePicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         pendingImageCallback?.invoke(uri)
         pendingImageCallback = null
@@ -72,6 +78,10 @@ class MainActivity : ComponentActivity() {
             requestPermissions = { requestMediaPermissions() },
             openAppSettings = { openAppSettings() },
             openVideos = { list, index -> openVideos(list, index) },
+            pickTextFile = { callback ->
+                pendingTextCallback = callback
+                safeLaunch { textPicker.launch(arrayOf("text/*", "application/octet-stream")) }
+            },
             pickImage = { callback ->
                 pendingImageCallback = callback
                 safeLaunch {

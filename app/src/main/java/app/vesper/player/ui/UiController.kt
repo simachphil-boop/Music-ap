@@ -26,6 +26,7 @@ class AppActions(
     val openAppSettings: () -> Unit,
     val openVideos: (videos: List<VideoEntity>, index: Int) -> Unit,
     val pickImage: (onPicked: (android.net.Uri?) -> Unit) -> Unit,
+    val pickTextFile: (onPicked: (android.net.Uri?) -> Unit) -> Unit,
 )
 
 /**
@@ -94,6 +95,9 @@ object Routes {
     const val EQUALIZER = "equalizer"
     const val DOWNLOADS = "downloads"
     const val EDITOR = "editor/{kind}/{id}"
+    const val LOGIN = "login/{site}"
+
+    fun login(site: app.vesper.player.data.download.CookieSite) = "login/${site.name}"
 
     fun editor(audio: Boolean, id: Long) = "editor/${if (audio) "audio" else "video"}/$id"
     const val GROUP = "group/{type}/{key}"

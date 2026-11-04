@@ -33,6 +33,8 @@ import java.util.UUID
 
 enum class DownloadKind { VIDEO, AUDIO }
 
+class DownloadError(message: String, val needsLogin: Boolean) : Exception(message)
+
 enum class DownloadStatus { QUEUED, DOWNLOADING, PROCESSING, DONE, FAILED, CANCELED }
 
 data class LinkInfo(
@@ -59,6 +61,7 @@ data class DownloadTask(
     val error: String? = null,
     val mediaId: Long? = null,
     val edit: EditSpec? = null,
+    val needsLogin: Boolean = false,
 ) {
     val active: Boolean get() = status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING || status == DownloadStatus.PROCESSING
 }
@@ -136,7 +139,10 @@ class Downloader(
         autoUpdateIfStale()
         return withContext(Dispatchers.IO) {
             runCatching {
-                val request = YoutubeDLRequest(url).apply { addOption("--no-playlist") }
+                val request = YoutubeDLRequest(url).apply {
+                    addOption("--no-playlist")
+                    addCookies(this)
+                }
                 val info = YoutubeDL.getInstance().getInfo(request)
                 val heights = info.formats.orEmpty()
                     .filter { it.vcodec != null && it.vcodec != "none" && it.height > 0 }
@@ -152,7 +158,7 @@ class Downloader(
                     source = info.extractorKey.orEmpty(),
                     heights = heights,
                 )
-            }.recoverCatching { e -> throw IllegalStateException(friendlyError(e)) }
+            }.recoverCatching { e -> throw describe(e) }
         }
     }
 
@@ -180,6 +186,11 @@ class Downloader(
         _tasks.update { list -> list.filter { it.active } }
     }
 
+    private fun addCookies(request: YoutubeDLRequest) {
+        val f = CookieStore.file(context)
+        if (CookieStore.hasAny(context)) request.addOption("--cookies", f.absolutePath)
+    }
+
     private fun updateTask(id: String, transform: (DownloadTask) -> DownloadTask) {
         _tasks.update { list -> list.map { if (it.id == id) transform(it) else it } }
     }
@@ -192,6 +203,7 @@ class Downloader(
             val request = YoutubeDLRequest(task.url).apply {
                 addOption("--no-playlist")
                 addOption("--no-mtime")
+                addCookies(this)
                 task.edit?.takeIf { it.trims }?.let { e ->
                     // Fetch only the chosen fragment — saves traffic and time.
                     val end = if (e.endMs > 0) FfmpegTool.seconds(e.endMs) else "inf"
@@ -269,7 +281,8 @@ class Downloader(
         } catch (e: Exception) {
             val current = _tasks.value.firstOrNull { it.id == task.id }
             if (current?.status != DownloadStatus.CANCELED) {
-                updateTask(task.id) { it.copy(status = DownloadStatus.FAILED, error = friendlyError(e)) }
+                val d = describe(e)
+                updateTask(task.id) { it.copy(status = DownloadStatus.FAILED, error = d.message, needsLogin = d.needsLogin) }
             }
         } finally {
             workDir.deleteRecursively()
@@ -283,19 +296,31 @@ class Downloader(
         /** Pulls the first link out of shared text like "Смотри: https://youtu.be/…". */
         fun extractUrl(text: String?): String? = text?.let { urlRegex.find(it)?.value?.trimEnd('.', ',', ')', '»') }
 
-        fun friendlyError(e: Throwable): String {
-            if (e.message?.startsWith("Не удалось запустить движок") == true) return e.message!!
-            val raw = (e.message ?: "").lines().lastOrNull { it.contains("ERROR") } ?: e.message.orEmpty()
+        /** Turns yt-dlp output into a short Russian message plus the original line for diagnostics. */
+        fun describe(e: Throwable): DownloadError {
+            val msg = e.message.orEmpty()
+            if (msg.startsWith("Не удалось запустить движок")) return DownloadError(msg, needsLogin = false)
+            val raw = msg.lines().lastOrNull { it.contains("ERROR") }?.removePrefix("ERROR:")?.trim()
+                ?: msg.lines().lastOrNull { it.isNotBlank() }.orEmpty()
+            val detail = raw.take(220)
+            fun has(vararg keys: String) = keys.any { raw.contains(it, ignoreCase = true) }
             return when {
-                raw.contains("Unsupported URL", true) -> "Этот сайт не поддерживается"
-                raw.contains("Private video", true) || raw.contains("Sign in", true) || raw.contains("login", true) ->
-                    "Видео закрыто или требует входа в аккаунт"
-                raw.contains("not available", true) || raw.contains("unavailable", true) -> "Видео недоступно"
-                raw.contains("Unable to resolve host", true) || raw.contains("network", true) || raw.contains("timed out", true) ->
-                    "Нет подключения к интернету"
-                raw.contains("HTTP Error 403", true) -> "Сайт отклонил загрузку — попробуйте обновить движок в настройках"
-                raw.isBlank() -> "Не удалось скачать"
-                else -> raw.removePrefix("ERROR:").trim().take(160)
+                has("not a bot", "confirm you") ->
+                    DownloadError("YouTube просит подтвердить, что вы не бот. Войдите в аккаунт YouTube ниже и повторите.\n$detail", needsLogin = true)
+                has("age-restricted", "confirm your age", "inappropriate for some users") ->
+                    DownloadError("Видео 18+: войдите в аккаунт, чтобы скачать его.\n$detail", needsLogin = true)
+                has("Private video", "private") ->
+                    DownloadError("Это закрытое видео. Скачать можно, только если у вашего аккаунта есть доступ — войдите ниже.\n$detail", needsLogin = true)
+                has("--cookies", "Sign in", "log in", "login required", "authentication") ->
+                    DownloadError("Сайт требует вход в аккаунт. Войдите ниже и повторите.\n$detail", needsLogin = true)
+                has("Unsupported URL") -> DownloadError("Этот сайт не поддерживается", needsLogin = false)
+                has("Unable to resolve host", "Failed to resolve", "timed out", "Network is unreachable") ->
+                    DownloadError("Нет подключения к интернету", needsLogin = false)
+                has("HTTP Error 403") ->
+                    DownloadError("Сайт отклонил загрузку. Обновите движок ниже или войдите в аккаунт.\n$detail", needsLogin = true)
+                has("not available", "unavailable", "removed") -> DownloadError("Видео недоступно.\n$detail", needsLogin = false)
+                raw.isBlank() -> DownloadError("Не удалось скачать", needsLogin = false)
+                else -> DownloadError(detail, needsLogin = false)
             }
         }
     }

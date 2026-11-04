@@ -59,6 +59,10 @@ import app.vesper.player.data.download.DownloadKind
 import app.vesper.player.data.download.DownloadStatus
 import app.vesper.player.data.download.DownloadTask
 import app.vesper.player.data.download.LinkInfo
+import app.vesper.player.data.download.CookieSite
+import app.vesper.player.data.download.CookieStore
+import app.vesper.player.data.download.DownloadError
+import androidx.compose.material.icons.rounded.AccountCircle
 import app.vesper.player.ui.LocalAppActions
 import app.vesper.player.ui.LocalBottomInset
 import app.vesper.player.ui.LocalViewModel
@@ -99,6 +103,10 @@ fun DownloadsScreen(onBack: () -> Unit) {
     var url by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var errorNeedsLogin by remember { mutableStateOf(false) }
+    var accountsVersion by remember { mutableStateOf(0) }
+    @Suppress("UNUSED_EXPRESSION") accountsVersion
+    val signedIn = CookieStore.signedInSites(context)
     var info by remember { mutableStateOf<LinkInfo?>(null) }
     var kind by rememberSaveable { mutableStateOf(DownloadKind.VIDEO) }
     var height by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -120,7 +128,10 @@ fun DownloadsScreen(onBack: () -> Unit) {
                     range = 0f..1f
                     crop = null
                 }
-                .onFailure { error = it.message ?: "Не удалось получить данные" }
+                .onFailure {
+                    error = it.message ?: "Не удалось получить данные"
+                    errorNeedsLogin = (it as? DownloadError)?.needsLogin == true
+                }
             loading = false
         }
     }
@@ -191,12 +202,29 @@ fun DownloadsScreen(onBack: () -> Unit) {
                         )
                     }
                 }
-                error?.let {
+                error?.let { err ->
                     Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    val main = err.substringBefore('\n')
+                    val detail = err.substringAfter('\n', "")
+                    Row(verticalAlignment = Alignment.Top) {
                         Icon(Icons.Rounded.ErrorOutline, null, tint = c.danger, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = c.danger)
+                        Column {
+                            Text(main, style = MaterialTheme.typography.bodyMedium, color = c.danger)
+                            if (detail.isNotBlank()) {
+                                Text(detail, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    if (errorNeedsLogin) {
+                        Spacer(Modifier.height(10.dp))
+                        val site = guessSite(url)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            (if (site != null) listOf(site) else CookieSite.entries.toList()).forEach { s ->
+                                VesperChip("Войти в ${s.title}", false, onClick = { ui.open(Routes.login(s)) })
+                            }
+                            VesperChip("Повторить", false, onClick = { lookup(url) })
+                        }
                     }
                 }
             }
@@ -330,11 +358,47 @@ fun DownloadsScreen(onBack: () -> Unit) {
                             vids.byId[id]?.let { actions.openVideos(listOf(it), 0) }
                         }
                     },
+                    onLogin = { ui.open(Routes.login(guessSite(t.url) ?: CookieSite.YOUTUBE)) },
                     onRetry = {
                         url = t.url
                         lookup(t.url)
                     },
                 )
+            }
+        }
+
+        item(key = "accounts") {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 20.dp)) {
+                OverlineText("Аккаунты для загрузки")
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Нужны для YouTube (если просит подтвердить, что вы не бот), видео 18+, закрытых роликов VK и Instagram.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textMuted,
+                )
+                Spacer(Modifier.height(10.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CookieSite.entries.forEach { site ->
+                        val on = site in signedIn
+                        VesperChip(if (on) "✓ ${site.title}" else site.title, on, onClick = { ui.open(Routes.login(site)) })
+                    }
+                    VesperChip("Импорт cookies.txt", false, onClick = {
+                        actions.pickTextFile { uri ->
+                            if (uri != null) {
+                                val n = runCatching { CookieStore.importFile(context, uri) }.getOrDefault(0)
+                                vm.message(if (n > 0) "Импортировано cookies: $n" else "В файле нет cookies в формате Netscape")
+                                accountsVersion++
+                            }
+                        }
+                    })
+                    if (signedIn.isNotEmpty() || CookieStore.hasAny(context)) {
+                        VesperChip("Выйти из всех", false, onClick = {
+                            CookieStore.clear(context)
+                            accountsVersion++
+                            vm.message("Данные входа удалены")
+                        })
+                    }
+                }
             }
         }
 
@@ -365,7 +429,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DownloadRow(task: DownloadTask, onEdit: () -> Unit, onCancel: () -> Unit, onOpen: () -> Unit, onRetry: () -> Unit) {
+private fun DownloadRow(task: DownloadTask, onEdit: () -> Unit, onLogin: () -> Unit, onCancel: () -> Unit, onOpen: () -> Unit, onRetry: () -> Unit) {
     val c = Vesper.colors
     Row(
         Modifier
@@ -428,8 +492,23 @@ private fun DownloadRow(task: DownloadTask, onEdit: () -> Unit, onCancel: () -> 
             task.status == DownloadStatus.DONE && task.mediaId != null ->
                 PressableIcon(Icons.Rounded.ContentCut, "Обрезать", onClick = onEdit, tint = c.accentBright, size = 20.dp)
             task.status == DownloadStatus.DONE -> Icon(Icons.Rounded.CheckCircle, null, tint = c.accentBright, modifier = Modifier.padding(12.dp).size(22.dp))
-            task.status == DownloadStatus.FAILED -> PressableIcon(Icons.Rounded.Refresh, "Повторить", onClick = onRetry, tint = c.accentBright, size = 20.dp)
+            task.status == DownloadStatus.FAILED -> Row {
+                if (task.needsLogin) PressableIcon(Icons.Rounded.AccountCircle, "Войти", onClick = onLogin, tint = c.accentBright, size = 20.dp)
+                PressableIcon(Icons.Rounded.Refresh, "Повторить", onClick = onRetry, tint = c.accentBright, size = 20.dp)
+            }
             else -> PressableIcon(Icons.Rounded.PlayArrow, "Открыть", onClick = onOpen, tint = c.textMuted, size = 20.dp, enabled = false)
         }
+    }
+}
+
+/** Which sign-in a link probably needs. */
+private fun guessSite(url: String): CookieSite? {
+    val u = url.lowercase()
+    return when {
+        "youtu" in u -> CookieSite.YOUTUBE
+        "vk.com" in u || "vkvideo" in u || "vk.ru" in u -> CookieSite.VK
+        "instagram" in u -> CookieSite.INSTAGRAM
+        "tiktok" in u -> CookieSite.TIKTOK
+        else -> null
     }
 }
