@@ -61,6 +61,10 @@ object FfmpegTool {
     private val lock = Mutex()
     @Volatile private var ready = false
 
+    /** Human-readable reason of the last failed start, shown to the user. */
+    @Volatile var lastError: String? = null
+        private set
+
     suspend fun init(context: Context): Boolean = lock.withLock {
         if (ready) return@withLock true
         withContext(Dispatchers.IO) {
@@ -68,6 +72,11 @@ object FfmpegTool {
                 YoutubeDL.getInstance().init(context.applicationContext)
                 FFmpeg.getInstance().init(context.applicationContext)
                 ready = true
+                lastError = null
+            }.onFailure { e ->
+                var root: Throwable = e
+                while (root.cause != null && root.cause !== root) root = root.cause!!
+                lastError = "${root.javaClass.simpleName}: ${root.message ?: e.message ?: "без описания"}".take(200)
             }.isSuccess
         }
     }
@@ -174,7 +183,7 @@ class MediaEditor(
         running = scope.launch {
             val work = File(context.cacheDir, "edit").apply { deleteRecursively(); mkdirs() }
             try {
-                if (!FfmpegTool.init(context)) error("Не удалось запустить обработчик")
+                if (!FfmpegTool.init(context)) error("Не удалось запустить обработчик (${FfmpegTool.lastError})")
                 _job.update { it?.copy(stage = "Читаю файл…") }
                 val input = copyToCache(Uri.parse(sourceUri), work)
                 _job.update { it?.copy(stage = "Обработка…") }

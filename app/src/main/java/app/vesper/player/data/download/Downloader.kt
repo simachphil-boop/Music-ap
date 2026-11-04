@@ -125,14 +125,14 @@ class Downloader(
     }
 
     suspend fun updateEngine(): String {
-        if (!ensureEngine()) return "Не удалось запустить движок загрузки"
+        if (!ensureEngine()) return "Не удалось запустить движок загрузки (${FfmpegTool.lastError})"
         return runCatching { updateEngineInternal() }
             .getOrElse { "Не удалось обновить: проверьте подключение к интернету" }
     }
 
     suspend fun fetchInfo(rawUrl: String): Result<LinkInfo> {
         val url = extractUrl(rawUrl) ?: return Result.failure(IllegalArgumentException("Это не похоже на ссылку"))
-        if (!ensureEngine()) return Result.failure(IllegalStateException("Не удалось запустить движок загрузки"))
+        if (!ensureEngine()) return Result.failure(IllegalStateException("Не удалось запустить движок загрузки (${FfmpegTool.lastError})"))
         autoUpdateIfStale()
         return withContext(Dispatchers.IO) {
             runCatching {
@@ -187,7 +187,7 @@ class Downloader(
     private suspend fun run(task: DownloadTask) = withContext(Dispatchers.IO) {
         val workDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "downloads/${task.id}").apply { mkdirs() }
         try {
-            if (!ensureEngine()) error("Не удалось запустить движок загрузки")
+            if (!ensureEngine()) error("Не удалось запустить движок загрузки (${FfmpegTool.lastError})")
             updateTask(task.id) { it.copy(status = DownloadStatus.DOWNLOADING) }
             val request = YoutubeDLRequest(task.url).apply {
                 addOption("--no-playlist")
@@ -284,6 +284,7 @@ class Downloader(
         fun extractUrl(text: String?): String? = text?.let { urlRegex.find(it)?.value?.trimEnd('.', ',', ')', '»') }
 
         fun friendlyError(e: Throwable): String {
+            if (e.message?.startsWith("Не удалось запустить движок") == true) return e.message!!
             val raw = (e.message ?: "").lines().lastOrNull { it.contains("ERROR") } ?: e.message.orEmpty()
             return when {
                 raw.contains("Unsupported URL", true) -> "Этот сайт не поддерживается"

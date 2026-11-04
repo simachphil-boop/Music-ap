@@ -15,3 +15,12 @@
 -dontwarn com.fasterxml.jackson.databind.**
 -dontwarn java.beans.**
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+# yt-dlp engine unpacks Python/FFmpeg with commons-compress, which instantiates
+# zip extra-field classes via reflection — R8 must not strip them.
+-keep class org.apache.commons.compress.** { *; }
+-keep class org.apache.commons.io.** { *; }
+-dontwarn org.apache.commons.compress.**
+-dontwarn org.tukaani.xz.**
+-dontwarn com.github.luben.zstd.**
+-dontwarn org.brotli.dec.**
+-dontwarn org.objectweb.asm.**
