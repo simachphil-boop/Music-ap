@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vesper</string>
+    <!-- Overrides Media3's notification channel name -->
+    <string name="default_notification_channel_name">Воспроизведение</string>
+</resources>

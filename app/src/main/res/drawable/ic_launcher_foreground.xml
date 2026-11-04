@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Crescent (evening moon) -->
+    <path android:pathData="M48.45,31.05 A25,25 0 1,0 73.40,64.80 A21,21 0 0,1 48.45,31.05 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="30"
+                android:startY="34"
+                android:endX="72"
+                android:endY="80">
+                <item android:offset="0" android:color="#FFF5E9CC" />
+                <item android:offset="1" android:color="#FFC39B5A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Vesper, the evening star -->
+    <path
+        android:fillColor="#FFF5E9CC"
+        android:pathData="M70,25.5 L71.5,30.5 L76.5,32 L71.5,33.5 L70,38.5 L68.5,33.5 L63.5,32 L68.5,30.5 Z" />
+    <!-- Play mark -->
+    <path
+        android:fillColor="#FFD0475E"
+        android:pathData="M55.5,43.5 Q55.5,41.6 57.2,42.6 L66.6,48.4 Q68.2,49.4 66.6,50.4 L57.2,56.2 Q55.5,57.2 55.5,55.3 Z" />
+</vector>

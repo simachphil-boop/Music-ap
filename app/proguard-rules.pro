@@ -4,3 +4,8 @@
 -dontwarn org.checkerframework.**
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.annotation.**
+-dontwarn com.google.j2objc.annotations.**
+-dontwarn afu.org.checkerframework.**
+-dontwarn javax.lang.model.**
+-dontwarn kotlin.annotations.jvm.**
+-dontwarn org.jspecify.annotations.**

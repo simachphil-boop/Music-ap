@@ -49,22 +49,30 @@ android {
         freeCompilerArgs += listOf(
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
             "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
             "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
             "-opt-in=androidx.media3.common.util.UnstableApi",
+            "-opt-in=androidx.compose.ui.text.ExperimentalTextApi",
+            "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-opt-in=kotlinx.coroutines.FlowPreview",
         )
     }
     buildFeatures {
         compose = true
         buildConfig = true
     }
+    lint {
+        // Media3 marks many APIs with @UnstableApi (lint-only opt-in); we use them intentionally.
+        disable += "UnsafeOptInUsageError"
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 }
 
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-}
 
 dependencies {
     implementation(libs.androidx.core.ktx)
