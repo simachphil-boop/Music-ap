@@ -157,6 +157,48 @@ object MediaPublisher {
     }
 }
 
+enum class RingtoneKind(val title: String, val folder: String, val manager: Int, val column: String) {
+    CALL("Звонок", Environment.DIRECTORY_RINGTONES, android.media.RingtoneManager.TYPE_RINGTONE, MediaStore.Audio.AudioColumns.IS_RINGTONE),
+    NOTIFICATION("Уведомления", Environment.DIRECTORY_NOTIFICATIONS, android.media.RingtoneManager.TYPE_NOTIFICATION, MediaStore.Audio.AudioColumns.IS_NOTIFICATION),
+    ALARM("Будильник", Environment.DIRECTORY_ALARMS, android.media.RingtoneManager.TYPE_ALARM, MediaStore.Audio.AudioColumns.IS_ALARM),
+}
+
+/** Puts a sound into the system ringtone folders and makes it the default. */
+object RingtonePublisher {
+    fun canWriteSettings(context: Context): Boolean = android.provider.Settings.System.canWrite(context)
+
+    suspend fun publishAndSet(context: Context, file: File, kind: RingtoneKind): Uri = withContext(Dispatchers.IO) {
+        val uri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "audio/mpeg")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, kind.folder + "/Floya")
+                put(kind.column, true)
+                put(MediaStore.Audio.AudioColumns.IS_MUSIC, false)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val u = resolver.insert(MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+                ?: error("Не удалось сохранить рингтон")
+            resolver.openOutputStream(u)?.use { out -> file.inputStream().use { it.copyTo(out) } } ?: error("Не удалось сохранить рингтон")
+            resolver.update(u, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            u
+        } else {
+            @Suppress("DEPRECATION")
+            val dir = File(Environment.getExternalStoragePublicDirectory(kind.folder), "Floya").apply { mkdirs() }
+            val target = File(dir, file.name)
+            file.copyTo(target, overwrite = true)
+            kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf("audio/mpeg")) { _, scanned ->
+                    if (scanned != null) cont.resumeWith(Result.success(scanned)) else cont.resumeWith(Result.failure(IllegalStateException("Файл не проиндексирован")))
+                }
+            }
+        }
+        android.media.RingtoneManager.setActualDefaultRingtoneUri(context, kind.manager, uri)
+        uri
+    }
+}
+
 data class EditJob(
     val title: String,
     val progress: Float = 0f,
@@ -247,6 +289,32 @@ class MediaEditor(
                 throw e
             } catch (e: Exception) {
                 _job.update { it?.copy(running = false, error = e.message ?: "Не удалось обработать файл") }
+            } finally {
+                work.deleteRecursively()
+            }
+        }
+    }
+
+    /** Cuts a fragment and sets it as the phone's ringtone / notification / alarm sound. */
+    fun startRingtone(sourceUri: String, title: String, durationMs: Long, spec: EditSpec, kind: RingtoneKind) {
+        if (running?.isActive == true) return
+        _job.value = EditJob(title = "$title — ${kind.title.lowercase()}", audio = true)
+        running = scope.launch {
+            val work = File(context.cacheDir, "edit").apply { deleteRecursively(); mkdirs() }
+            try {
+                if (!FfmpegTool.init(context)) error("Не удалось запустить обработчик (${FfmpegTool.lastError})")
+                val input = copyToCache(Uri.parse(sourceUri), work)
+                _job.update { it?.copy(stage = "Вырезаю фрагмент…") }
+                val output = File(work, safeName(title) + " (рингтон).mp3")
+                render(context, input, output, true, spec.copy(crop = null), durationMs) { p -> _job.update { it?.copy(progress = p) } }
+                _job.update { it?.copy(stage = "Устанавливаю…", progress = 1f) }
+                RingtonePublisher.publishAndSet(context, output, kind)
+                _job.update { it?.copy(running = false, stage = "Готово", resultId = -1L) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _job.value = null
+                throw e
+            } catch (e: Exception) {
+                _job.update { it?.copy(running = false, error = e.message ?: "Не удалось установить рингтон") }
             } finally {
                 work.deleteRecursively()
             }

@@ -396,6 +396,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playerMessages() = player.messages
 
+    /** Listening statistics for the last [days] days (0 = all time). */
+    suspend fun loadStats(days: Int): app.vesper.player.ui.screens.VibeStats {
+        val since = if (days > 0) System.currentTimeMillis() - days * 86_400_000L else 0L
+        val dao = container.database.listens()
+        return app.vesper.player.ui.screens.VibeStats(
+            totalMs = dao.totalMs(since),
+            plays = dao.count(since),
+            artists = dao.artistCount(since),
+            topArtists = dao.topArtists(since, 5),
+            topTracks = dao.topTracks(since, 5),
+            peak = app.vesper.player.ui.screens.peakPartOfDay(dao.startTimes(since)),
+            favoriteVibe = wave.favoriteVibe(),
+        )
+    }
+
     /** Saves the internet track that is playing as an MP3 in the library. */
     fun downloadOnline(entry: QueueEntry) {
         val page = entry.pageUrl ?: return

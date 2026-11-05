@@ -65,6 +65,47 @@ class PlaybackService : MediaSessionService() {
     private var resumeOnConnect = false
     private var deviceCallback: AudioDeviceCallback? = null
 
+    // Listening log ("Твой вайб")
+    private var logKey: String? = null
+    private var logTitle = ""
+    private var logArtist = ""
+    private var logOnline = false
+    private var logStartedAt = 0L
+    private var logMs = 0L
+    private var lastTickAt = 0L
+    private var wasPlaying = false
+
+    private fun tickListen() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (wasPlaying && logKey != null && lastTickAt > 0) logMs += (now - lastTickAt).coerceIn(0, 60_000)
+        lastTickAt = now
+        wasPlaying = player.isPlaying
+    }
+
+    private fun flushListen() {
+        tickListen()
+        val key = logKey ?: return
+        if (logMs >= 20_000) {
+            val entry = app.vesper.player.data.db.ListenEntity(
+                mediaKey = key, title = logTitle, artist = logArtist, online = logOnline,
+                startedAt = logStartedAt, listenedMs = logMs,
+            )
+            container.appScope.launch { runCatching { container.database.listens().insert(entry) } }
+        }
+        logKey = null
+        logMs = 0
+    }
+
+    private fun startListen(item: MediaItem?) {
+        if (item == null) return
+        logKey = item.mediaId
+        logTitle = item.mediaMetadata.title?.toString().orEmpty()
+        logArtist = item.mediaMetadata.artist?.toString().orEmpty()
+        logOnline = item.pageUrl() != null
+        logStartedAt = System.currentTimeMillis()
+        logMs = 0
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Online tracks use floyastream:// URIs that are resolved to real stream URLs at load time.
@@ -122,6 +163,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        flushListen()
         savePositionNow()
         deviceCallback?.let { getSystemService(AudioManager::class.java)?.unregisterAudioDeviceCallback(it) }
         container.audioEffects.release()
@@ -196,6 +238,7 @@ class PlaybackService : MediaSessionService() {
         scope.launch {
             while (isActive) {
                 delay(5_000)
+                tickListen()
                 if (player.isPlaying) savePositionNow()
             }
         }
@@ -211,6 +254,13 @@ class PlaybackService : MediaSessionService() {
 
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
+            if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) || (logKey == null && player.currentMediaItem != null)) {
+                if (logKey != player.currentMediaItem?.mediaId) {
+                    flushListen()
+                    startListen(player.currentMediaItem)
+                }
+            }
+            tickListen()
             if (events.contains(Player.EVENT_TIMELINE_CHANGED)) scheduleQueueSave()
             if (events.containsAny(
                     Player.EVENT_IS_PLAYING_CHANGED,

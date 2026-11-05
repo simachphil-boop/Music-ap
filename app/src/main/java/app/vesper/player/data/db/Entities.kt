@@ -144,3 +144,18 @@ data class OnlinePlaylistEntity(
     val itemCount: Int,
     val createdAt: Long,
 )
+
+/** One listening session of a track (local or online), for "Твой вайб" statistics. */
+@Entity(tableName = "listen_log", indices = [Index("startedAt")])
+data class ListenEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val mediaKey: String,
+    val title: String,
+    val artist: String,
+    val online: Boolean,
+    val startedAt: Long,
+    val listenedMs: Long,
+)
+
+data class ArtistStat(val artist: String, val ms: Long, val plays: Int)
+data class TrackStat(val title: String, val artist: String, val ms: Long, val plays: Int)

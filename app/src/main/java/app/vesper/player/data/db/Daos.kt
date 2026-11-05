@@ -259,3 +259,40 @@ interface OnlinePlaylistDao {
     @Query("UPDATE online_playlists SET name = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
 }
+
+@Dao
+interface ListenDao {
+    @Insert
+    suspend fun insert(e: ListenEntity)
+
+    @Query("SELECT COALESCE(SUM(listenedMs), 0) FROM listen_log WHERE startedAt >= :since")
+    suspend fun totalMs(since: Long): Long
+
+    @Query("SELECT COUNT(*) FROM listen_log WHERE startedAt >= :since")
+    suspend fun count(since: Long): Int
+
+    @Query("SELECT COUNT(DISTINCT artist) FROM listen_log WHERE startedAt >= :since")
+    suspend fun artistCount(since: Long): Int
+
+    @Query(
+        """
+        SELECT artist, SUM(listenedMs) AS ms, COUNT(*) AS plays FROM listen_log
+        WHERE startedAt >= :since AND artist != '' GROUP BY artist ORDER BY ms DESC LIMIT :limit
+        """,
+    )
+    suspend fun topArtists(since: Long, limit: Int): List<ArtistStat>
+
+    @Query(
+        """
+        SELECT title, artist, SUM(listenedMs) AS ms, COUNT(*) AS plays FROM listen_log
+        WHERE startedAt >= :since GROUP BY mediaKey ORDER BY plays DESC, ms DESC LIMIT :limit
+        """,
+    )
+    suspend fun topTracks(since: Long, limit: Int): List<TrackStat>
+
+    @Query("SELECT startedAt FROM listen_log WHERE startedAt >= :since")
+    suspend fun startTimes(since: Long): List<Long>
+
+    @Query("DELETE FROM listen_log")
+    suspend fun clear()
+}

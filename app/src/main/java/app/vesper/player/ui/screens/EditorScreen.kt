@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -112,6 +113,7 @@ fun EditorScreen(audio: Boolean, id: Long, onBack: () -> Unit) {
     var range by remember { mutableStateOf(0f..1f) }
     var crop by remember { mutableStateOf<CropAspect?>(null) }
     var offset by remember { mutableFloatStateOf(0.5f) }
+    var ringtoneChooser by remember { mutableStateOf(false) }
 
     DisposableEffect(player) {
         vm.player.pause()
@@ -345,9 +347,60 @@ fun EditorScreen(audio: Boolean, id: Long, onBack: () -> Unit) {
                         icon = Icons.Rounded.ContentCut,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (audio) {
+                        Spacer(Modifier.height(10.dp))
+                        SecondaryButton(
+                            "Сделать рингтоном",
+                            onClick = {
+                                player.pause()
+                                ringtoneChooser = true
+                            },
+                            icon = Icons.Rounded.NotificationsActive,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "Совет: для звонка отметьте 20–40 секунд припева.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.textMuted,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
                 }
             }
         }
+    }
+
+    if (ringtoneChooser) {
+        app.vesper.player.ui.components.ChoiceSheet(
+            title = "Поставить на…",
+            options = app.vesper.player.data.edit.RingtoneKind.entries.map { it.title },
+            selected = -1,
+            onDismiss = { ringtoneChooser = false },
+            onSelect = { idx ->
+                val kind = app.vesper.player.data.edit.RingtoneKind.entries[idx]
+                if (!app.vesper.player.data.edit.RingtonePublisher.canWriteSettings(context)) {
+                    vm.message("Разрешите Floya Music менять системные настройки и нажмите ещё раз")
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS)
+                                .setData(Uri.parse("package:" + context.packageName))
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                } else {
+                    vm.editor.startRingtone(
+                        sourceUri = uri,
+                        title = title,
+                        durationMs = duration,
+                        spec = EditSpec(
+                            startMs = if (range.start > 0f) startMs else 0L,
+                            endMs = if (range.endInclusive < 1f) endMs else if (duration > 40_000) startMs + 40_000 else 0L,
+                        ),
+                        kind = kind,
+                    )
+                }
+            },
+        )
     }
 }
 

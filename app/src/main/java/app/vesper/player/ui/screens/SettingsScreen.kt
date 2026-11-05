@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HeadsetOff
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
@@ -135,6 +136,15 @@ fun SettingsScreen() {
             ) { vm.setResumeOnConnect(it) }
         }
 
+        item {
+            SettingRow(
+                title = "Твой вайб",
+                subtitle = "Статистика прослушиваний и карточка для сторис",
+                icon = Icons.Rounded.Insights,
+                onClick = { ui.open(Routes.STATS) },
+                trailing = { Chevron() },
+            )
+        }
         item { Group("Волна") }
         item {
             val a by vm.analysis.collectAsStateWithLifecycle()

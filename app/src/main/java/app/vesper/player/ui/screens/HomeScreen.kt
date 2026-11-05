@@ -259,7 +259,20 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
     val c = Vesper.colors
     val ornament = Vesper.theme.ornament
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 18.dp)) {
-        OverlineText("${greeting()}, Floyachieee", color = c.ornament)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OverlineText("${greeting()}, Floyachieee", color = c.ornament, modifier = Modifier.weight(1f))
+            val ui = LocalUi.current
+            Text(
+                "✦ Твой вайб",
+                style = MaterialTheme.typography.labelMedium,
+                color = c.accentBright,
+                modifier = Modifier
+                    .clip(Vesper.shapes.chip)
+                    .background(c.highlight)
+                    .clickable { ui.open(Routes.STATS) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
         Spacer(Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.Bottom) {
             Text(

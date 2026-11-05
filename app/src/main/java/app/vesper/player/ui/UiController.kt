@@ -98,6 +98,7 @@ object Routes {
     const val DOWNLOADS = "downloads"
     const val EDITOR = "editor/{kind}/{id}"
     const val LOGIN = "login/{site}"
+    const val STATS = "stats"
     const val ONLINE_PLAYLIST = "online_playlist/{id}"
 
     fun onlinePlaylist(id: Long) = "online_playlist/$id"

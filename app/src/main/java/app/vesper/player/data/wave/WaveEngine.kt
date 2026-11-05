@@ -111,8 +111,13 @@ class WaveEngine(
         }
     }
 
+    /** The preset started most often — shown in statistics. */
+    fun favoriteVibe(): Vibe? = Vibes.all.maxByOrNull { prefs.getInt("vibe_count_" + it.id, 0) }
+        ?.takeIf { prefs.getInt("vibe_count_" + it.id, 0) > 0 }
+
     fun start(vibe: Vibe) {
         if (_state.value.starting) return
+        prefs.edit().putInt("vibe_count_" + vibe.id, prefs.getInt("vibe_count_" + vibe.id, 0) + 1).apply()
         _state.update { it.copy(starting = true) }
         scope.launch {
             try {
