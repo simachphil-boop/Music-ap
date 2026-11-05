@@ -61,6 +61,10 @@ import app.vesper.player.data.download.DownloadKind
 import app.vesper.player.data.download.DownloadStatus
 import app.vesper.player.data.download.DownloadTask
 import app.vesper.player.data.download.LinkInfo
+import app.vesper.player.data.download.SearchResult
+import app.vesper.player.data.download.SearchSource
+import app.vesper.player.ui.components.ChipRow
+import androidx.compose.material.icons.rounded.Search
 import app.vesper.player.data.download.CookieSite
 import app.vesper.player.data.download.CookieStore
 import app.vesper.player.data.download.DownloadError
@@ -117,6 +121,31 @@ fun DownloadsScreen() {
     var range by remember { mutableStateOf(0f..1f) }
     var crop by remember { mutableStateOf<CropAspect?>(null) }
 
+    var mode by rememberSaveable { mutableStateOf(0) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var source by rememberSaveable { mutableStateOf(SearchSource.YOUTUBE) }
+    var searching by remember { mutableStateOf(false) }
+    var searchedOnce by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+
+    fun search() {
+        if (query.isBlank() || searching) return
+        searching = true
+        searchError = null
+        val src = source
+        scope.launch {
+            vm.downloader.search(query, src)
+                .onSuccess { results = it }
+                .onFailure {
+                    results = emptyList()
+                    searchError = it.message ?: "Поиск не удался"
+                }
+            searching = false
+            searchedOnce = true
+        }
+    }
+
     fun lookup(target: String) {
         if (target.isBlank() || loading) return
         loading = true
@@ -143,6 +172,7 @@ fun DownloadsScreen() {
     LaunchedEffect(shared) {
         val s = shared
         if (!s.isNullOrBlank()) {
+            mode = 0
             url = s
             lookup(s)
         }
@@ -152,19 +182,20 @@ fun DownloadsScreen() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom + 16.dp)) {
         item {
             ScreenHeader("Загрузки", subtitle = "Скачивание и импорт")
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                OverlineText("По ссылке", color = c.ornament)
-                Spacer(Modifier.height(4.dp))
+            ChipRow(listOf("По ссылке", "Поиск"), mode, onSelect = { mode = it })
+            Spacer(Modifier.height(12.dp))
+            if (mode == 0) {
                 Text(
                     "YouTube, VK, Rutube, TikTok, SoundCloud и сотни других сайтов, а также прямые ссылки на файлы. " +
                         "Совет: в приложении YouTube нажмите «Поделиться» → Floya Music.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.textSecondary,
+                    modifier = Modifier.padding(horizontal = 20.dp),
                 )
             }
         }
 
-        item {
+        if (mode == 0) item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { VesperTextField(url, { url = it }, "Ссылка на видео или трек") }
@@ -227,6 +258,92 @@ fun DownloadsScreen() {
                             VesperChip("Повторить", false, onClick = { lookup(url) })
                         }
                     }
+                }
+            }
+        }
+
+        if (mode == 1) {
+            item(key = "searchBox") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { VesperTextField(query, { query = it }, "Песня, исполнитель, фильм…") }
+                        Spacer(Modifier.width(6.dp))
+                        PressableIcon(Icons.Rounded.Search, "Искать", onClick = { search() }, tint = c.accentBright)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SearchSource.entries.forEach { src ->
+                            VesperChip(src.title, source == src, onClick = {
+                                source = src
+                                if (query.isNotBlank()) search()
+                            })
+                        }
+                    }
+                    Text(
+                        source.note + if (source != SearchSource.ARCHIVE) ". Скачивайте только то, на что у вас есть права." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.textMuted,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    if (searching) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(color = c.accentBright, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                if (engine.preparing) "Первый запуск: готовлю движок…" else "Ищу на ${source.title}…",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = c.textMuted,
+                            )
+                        }
+                    }
+                    searchError?.let { err ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(err.substringBefore('\n'), style = MaterialTheme.typography.bodyMedium, color = c.danger)
+                    }
+                    if (!searching && searchError == null && searchedOnce && results.isEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Ничего не нашлось — попробуйте другой запрос или источник.", style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            items(results, key = { "r:" + it.url }) { r ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            mode = 0
+                            url = r.url
+                            lookup(r.url)
+                        }
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(width = 112.dp, height = 63.dp).clip(Vesper.shapes.small)) {
+                        RemoteImage(r.thumbnail, Modifier.fillMaxSize())
+                        if (r.durationSec > 0) {
+                            Text(
+                                formatDuration(r.durationSec * 1000L),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = androidx.compose.ui.graphics.Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(4.dp)
+                                    .clip(Vesper.shapes.small)
+                                    .background(androidx.compose.ui.graphics.Color(0xB3000000))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(r.title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (r.author.isNotBlank()) {
+                            Text(r.author, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Icon(Icons.Rounded.Download, "Скачать", tint = c.accentBright, modifier = Modifier.padding(start = 8.dp).size(22.dp))
                 }
             }
         }

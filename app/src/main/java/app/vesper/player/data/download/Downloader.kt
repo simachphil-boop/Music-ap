@@ -35,6 +35,21 @@ enum class DownloadKind { VIDEO, AUDIO }
 
 class DownloadError(message: String, val needsLogin: Boolean) : Exception(message)
 
+enum class SearchSource(val title: String, val note: String) {
+    YOUTUBE("YouTube", "Музыка, клипы, видео"),
+    SOUNDCLOUD("SoundCloud", "Треки музыкантов"),
+    ARCHIVE("Internet Archive", "Бесплатно и легально: общественное достояние и CC"),
+}
+
+data class SearchResult(
+    val url: String,
+    val title: String,
+    val author: String,
+    val durationSec: Int,
+    val thumbnail: String?,
+    val source: SearchSource,
+)
+
 enum class DownloadStatus { QUEUED, DOWNLOADING, PROCESSING, DONE, FAILED, CANCELED }
 
 data class LinkInfo(
@@ -159,6 +174,103 @@ class Downloader(
                     heights = heights,
                 )
             }.recoverCatching { e -> throw describe(e) }
+        }
+    }
+
+    /** Searches a source and returns pages that the regular download flow can open. */
+    suspend fun search(query: String, source: SearchSource): Result<List<SearchResult>> {
+        val q = query.trim()
+        if (q.isEmpty()) return Result.success(emptyList())
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                when (source) {
+                    SearchSource.ARCHIVE -> searchArchive(q)
+                    else -> {
+                        if (!ensureEngine()) throw DownloadError("Не удалось запустить движок загрузки (${FfmpegTool.lastError})", false)
+                        autoUpdateIfStale()
+                        val prefix = if (source == SearchSource.YOUTUBE) "ytsearch25" else "scsearch25"
+                        val request = YoutubeDLRequest("$prefix:$q").apply {
+                            addOption("--flat-playlist")
+                            addOption("--dump-single-json")
+                            addOption("--no-warnings")
+                            addCookies(this)
+                        }
+                        val out = YoutubeDL.getInstance().execute(request).out
+                        parseFlatPlaylist(out, source)
+                    }
+                }
+            }.recoverCatching { e -> throw if (e is DownloadError) e else describe(e) }
+        }
+    }
+
+    private fun parseFlatPlaylist(json: String, source: SearchSource): List<SearchResult> {
+        val start = json.indexOf('{')
+        if (start < 0) return emptyList()
+        val root = org.json.JSONObject(json.substring(start))
+        val entries = root.optJSONArray("entries") ?: return emptyList()
+        val out = ArrayList<SearchResult>()
+        for (i in 0 until entries.length()) {
+            val e = entries.optJSONObject(i) ?: continue
+            val url = e.optString("webpage_url").ifBlank { e.optString("url") }
+            if (url.isBlank() || !url.startsWith("http")) continue
+            val thumbs = e.optJSONArray("thumbnails")
+            val thumb = e.optString("thumbnail").ifBlank {
+                if (thumbs != null && thumbs.length() > 0) thumbs.optJSONObject(thumbs.length() - 1)?.optString("url").orEmpty() else ""
+            }
+            out += SearchResult(
+                url = url,
+                title = e.optString("title").ifBlank { "Без названия" },
+                author = e.optString("channel").ifBlank { e.optString("uploader") },
+                durationSec = e.optDouble("duration", 0.0).let { if (it.isNaN()) 0 else it.toInt() },
+                thumbnail = thumb.ifBlank { null },
+                source = source,
+            )
+        }
+        return out
+    }
+
+    /** archive.org advanced search — free public-domain / Creative Commons audio and video. */
+    private fun searchArchive(q: String): List<SearchResult> {
+        val query = "(${q}) AND mediatype:(audio OR movies)"
+        val url = "https://archive.org/advancedsearch.php?q=" + java.net.URLEncoder.encode(query, "UTF-8") +
+            "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=mediatype&fl%5B%5D=runtime" +
+            "&sort%5B%5D=downloads+desc&rows=30&page=1&output=json"
+        val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 10_000
+            readTimeout = 15_000
+        }
+        val body = try {
+            conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+        val docs = org.json.JSONObject(body).optJSONObject("response")?.optJSONArray("docs") ?: return emptyList()
+        val out = ArrayList<SearchResult>()
+        for (i in 0 until docs.length()) {
+            val d = docs.optJSONObject(i) ?: continue
+            val id = d.optString("identifier")
+            if (id.isBlank()) continue
+            val creator = d.optJSONArray("creator")?.optString(0) ?: d.optString("creator")
+            out += SearchResult(
+                url = "https://archive.org/details/$id",
+                title = d.optJSONArray("title")?.optString(0) ?: d.optString("title").ifBlank { id },
+                author = creator.orEmpty(),
+                durationSec = parseRuntime(d.optString("runtime")),
+                thumbnail = "https://archive.org/services/img/$id",
+                source = SearchSource.ARCHIVE,
+            )
+        }
+        return out
+    }
+
+    private fun parseRuntime(raw: String): Int {
+        if (raw.isBlank()) return 0
+        val parts = raw.trim().split(":").mapNotNull { it.trim().toDoubleOrNull() }
+        return when (parts.size) {
+            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]).toInt()
+            2 -> (parts[0] * 60 + parts[1]).toInt()
+            1 -> parts[0].toInt()
+            else -> 0
         }
     }
 
