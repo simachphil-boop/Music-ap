@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -98,6 +99,9 @@ class Downloader(
     private val scope: CoroutineScope,
 ) {
     private val initLock = Mutex()
+    private val slots = kotlinx.coroutines.sync.Semaphore(2)
+
+    suspend fun prepare(): Boolean = ensureEngine()
     private val prefs = context.getSharedPreferences("floya_downloader", Context.MODE_PRIVATE)
 
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
@@ -286,7 +290,8 @@ class Downloader(
         )
         _tasks.update { listOf(task) + it }
         DownloadService.start(context)
-        scope.launch { run(task) }
+        // At most two downloads at once — a whole playlist can be queued safely.
+        scope.launch { slots.withPermit { if (_tasks.value.firstOrNull { it.id == task.id }?.status != DownloadStatus.CANCELED) run(task) } }
     }
 
     fun cancel(id: String) {

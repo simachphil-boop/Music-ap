@@ -241,3 +241,21 @@ interface WaveDao {
     @Query("SELECT COUNT(*) FROM track_stats WHERE banned = 1")
     fun observeBannedCount(): Flow<Int>
 }
+
+@Dao
+interface OnlinePlaylistDao {
+    @Query("SELECT * FROM online_playlists ORDER BY createdAt DESC")
+    fun observeAll(): Flow<List<OnlinePlaylistEntity>>
+
+    @Query("SELECT * FROM online_playlists WHERE id = :id")
+    fun observe(id: Long): Flow<OnlinePlaylistEntity?>
+
+    @Insert
+    suspend fun insert(p: OnlinePlaylistEntity): Long
+
+    @Query("DELETE FROM online_playlists WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE online_playlists SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+}

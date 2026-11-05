@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -65,11 +66,16 @@ fun PlaylistsScreen() {
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Плейлисты", subtitle = "Музыка: $music · Видео: $video") {
-            PressableIcon(Icons.Rounded.Add, "Создать плейлист", onClick = { creating = true })
+            PressableIcon(Icons.Rounded.SwapHoriz, "Перенести из другого сервиса", onClick = { ui.transferVisible = true })
+            PressableIcon(Icons.Rounded.Add, "Создать плейлист", onClick = { if (ui.playlistKind == 2) ui.transferVisible = true else creating = true })
         }
-        ChipRow(listOf("Музыка", "Видео"), ui.playlistKind, onSelect = { ui.playlistKind = it })
+        ChipRow(listOf("Музыка", "Видео", "Перенесённые"), ui.playlistKind, onSelect = { ui.playlistKind = it })
         Spacer(Modifier.height(10.dp))
-        PlaylistGrid(kind = if (ui.playlistKind == 0) PlaylistKind.MUSIC else PlaylistKind.VIDEO, bottom = bottom)
+        if (ui.playlistKind == 2) {
+            TransferredList(bottom = bottom, onTransfer = { ui.transferVisible = true })
+        } else {
+            PlaylistGrid(kind = if (ui.playlistKind == 0) PlaylistKind.MUSIC else PlaylistKind.VIDEO, bottom = bottom)
+        }
     }
 
     if (creating) {

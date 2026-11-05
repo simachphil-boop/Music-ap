@@ -38,6 +38,7 @@ class UiController(val nav: NavHostController) {
     var queueVisible by mutableStateOf(false)
     var sleepSheetVisible by mutableStateOf(false)
     var studioVisible by mutableStateOf(false)
+    var transferVisible by mutableStateOf(false)
 
     var trackOptions by mutableStateOf<Pair<TrackEntity, ExtraTrackAction?>?>(null)
     var videoOptions by mutableStateOf<Pair<VideoEntity, ExtraTrackAction?>?>(null)
@@ -97,6 +98,9 @@ object Routes {
     const val DOWNLOADS = "downloads"
     const val EDITOR = "editor/{kind}/{id}"
     const val LOGIN = "login/{site}"
+    const val ONLINE_PLAYLIST = "online_playlist/{id}"
+
+    fun onlinePlaylist(id: Long) = "online_playlist/$id"
 
     fun login(site: app.vesper.player.data.download.CookieSite) = "login/${site.name}"
 

@@ -130,3 +130,17 @@ data class TrackStatsEntity(
     val completions: Int,
     val banned: Boolean,
 )
+
+/** Playlist brought over from another service; tracks are streamed/downloaded on demand. */
+@Entity(tableName = "online_playlists")
+data class OnlinePlaylistEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val source: String,
+    val sourceUrl: String,
+    val coverUrl: String?,
+    /** JSON array of {u: page/search url, t: title, a: artist, d: seconds, th: thumbnail}. */
+    val itemsJson: String,
+    val itemCount: Int,
+    val createdAt: Long,
+)

@@ -224,6 +224,9 @@ private fun VesperNavHost(nav: NavHostController) {
                 .getOrDefault(app.vesper.player.data.download.CookieSite.YOUTUBE)
             app.vesper.player.ui.screens.LoginScreen(site, onBack = { nav.popBackStack() })
         }
+        composable(Routes.ONLINE_PLAYLIST, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
+            app.vesper.player.ui.screens.OnlinePlaylistScreen(entry.arguments?.getLong("id") ?: 0L, onBack = { nav.popBackStack() })
+        }
         composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen() }
         composable(
             Routes.GROUP,

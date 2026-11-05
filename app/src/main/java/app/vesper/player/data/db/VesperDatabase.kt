@@ -16,8 +16,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         QueueItemEntity::class,
         TrackFeaturesEntity::class,
         TrackStatsEntity::class,
+        OnlinePlaylistEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class VesperDatabase : RoomDatabase() {
@@ -26,6 +27,7 @@ abstract class VesperDatabase : RoomDatabase() {
     abstract fun playlists(): PlaylistDao
     abstract fun queue(): QueueDao
     abstract fun wave(): WaveDao
+    abstract fun onlinePlaylists(): OnlinePlaylistDao
 
     companion object {
         /** v2 adds the Wave tables; existing library, playlists and history are kept. */
@@ -44,9 +46,20 @@ abstract class VesperDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 adds playlists transferred from other services. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `online_playlists` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `source` TEXT NOT NULL, `sourceUrl` TEXT NOT NULL, `coverUrl` TEXT, " +
+                        "`itemsJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)",
+                )
+            }
+        }
+
         fun build(context: Context): VesperDatabase =
             Room.databaseBuilder(context, VesperDatabase::class.java, "vesper.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
     }
