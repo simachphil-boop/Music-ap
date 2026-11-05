@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.VolumeDown
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -150,6 +151,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
         tween(700),
         label = "npTop",
     )
+
+    var showLyrics by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = showLyrics) { showLyrics = false }
 
     // --- Drag-down to dismiss -------------------------------------------------------------------
     val scope = rememberCoroutineScope()
@@ -369,11 +373,25 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     tint = if (settings.equalizer.enabled) c.accentBright else c.textSecondary,
                 )
                 PressableIcon(
-                    Icons.Rounded.PlaylistAdd, "В плейлист",
-                    onClick = { ui.showAddToPlaylist(listOf(current.trackId), PlaylistKind.MUSIC) },
+                    Icons.Rounded.Notes, "Текст песни",
+                    onClick = { showLyrics = true },
                     tint = c.textSecondary,
                 )
+                if (!current.online) {
+                    PressableIcon(
+                        Icons.Rounded.PlaylistAdd, "В плейлист",
+                        onClick = { ui.showAddToPlaylist(listOf(current.trackId), PlaylistKind.MUSIC) },
+                        tint = c.textSecondary,
+                    )
+                }
             }
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showLyrics,
+            enter = androidx.compose.animation.slideInVertically(tween(320)) { it } + fadeIn(tween(200)),
+            exit = androidx.compose.animation.slideOutVertically(tween(260)) { it } + fadeOut(tween(200)),
+        ) {
+            LyricsView(current, onClose = { showLyrics = false })
         }
     }
 }
