@@ -47,6 +47,15 @@ class VideoPlayerActivity : ComponentActivity() {
         private const val EXTRA_IDS = "ids"
         private const val EXTRA_INDEX = "index"
 
+        private const val EXTRA_ONLINE_URL = "online_url"
+        private const val EXTRA_ONLINE_TITLE = "online_title"
+
+        /** Streams a video page (YouTube etc.) without downloading it. */
+        fun onlineIntent(context: Context, pageUrl: String, title: String): Intent =
+            Intent(context, VideoPlayerActivity::class.java)
+                .putExtra(EXTRA_ONLINE_URL, pageUrl)
+                .putExtra(EXTRA_ONLINE_TITLE, title)
+
         fun intent(context: Context, ids: LongArray, index: Int): Intent =
             Intent(context, VideoPlayerActivity::class.java)
                 .putExtra(EXTRA_IDS, ids)
@@ -125,7 +134,60 @@ class VideoPlayerActivity : ComponentActivity() {
         loadPlaylist()
     }
 
+    private fun playOnline(pageUrl: String, title: String) {
+        android.widget.Toast.makeText(this, "Загружаю видео…", android.widget.Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            try {
+                if (!app.vesper.player.data.edit.FfmpegTool.init(this@VideoPlayerActivity)) {
+                    error("Движок не запустился: ${app.vesper.player.data.edit.FfmpegTool.lastError}")
+                }
+                val info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val request = com.yausername.youtubedl_android.YoutubeDLRequest(pageUrl).apply {
+                        addOption("--no-playlist")
+                        addOption(
+                            "-f",
+                            "bv*[height<=1080][ext=mp4][protocol^=http]+ba[ext=m4a][protocol^=http]/" +
+                                "bv*[height<=1080][protocol^=http]+ba[protocol^=http]/b[ext=mp4][protocol^=http]/b[protocol^=http]",
+                        )
+                        val cookies = app.vesper.player.data.download.CookieStore
+                        if (cookies.hasAny(this@VideoPlayerActivity)) addOption("--cookies", cookies.file(this@VideoPlayerActivity).absolutePath)
+                    }
+                    com.yausername.youtubedl_android.YoutubeDL.getInstance().getInfo(request)
+                }
+                fun source(url: String, headers: Map<String, String>): androidx.media3.exoplayer.source.MediaSource {
+                    val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                        .setAllowCrossProtocolRedirects(true)
+                        .setDefaultRequestProperties(headers)
+                    val item = MediaItem.Builder()
+                        .setUri(Uri.parse(url))
+                        .setMediaMetadata(MediaMetadata.Builder().setTitle(info.title ?: title).build())
+                        .build()
+                    return androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http).createMediaSource(item)
+                }
+                val formats = info.requestedFormats.orEmpty().filter { it.url != null }
+                val mediaSource = if (formats.size >= 2) {
+                    androidx.media3.exoplayer.source.MergingMediaSource(
+                        *formats.map { source(it.url!!, it.httpHeaders.orEmpty()) }.toTypedArray(),
+                    )
+                } else {
+                    source(info.url ?: error("Видео не найдено"), info.httpHeaders.orEmpty())
+                }
+                player.setMediaSource(mediaSource)
+                player.prepare()
+                player.play()
+            } catch (e: Exception) {
+                val msg = app.vesper.player.data.download.Downloader.describe(e).message
+                android.widget.Toast.makeText(this@VideoPlayerActivity, "Не удалось открыть видео: $msg", android.widget.Toast.LENGTH_LONG).show()
+                finish()
+            }
+        }
+    }
+
     private fun loadPlaylist() {
+        intent.getStringExtra(EXTRA_ONLINE_URL)?.let { url ->
+            playOnline(url, intent.getStringExtra(EXTRA_ONLINE_TITLE).orEmpty())
+            return
+        }
         val ids = intent.getLongArrayExtra(EXTRA_IDS)
         val start = intent.getIntExtra(EXTRA_INDEX, 0)
         val data = intent.data

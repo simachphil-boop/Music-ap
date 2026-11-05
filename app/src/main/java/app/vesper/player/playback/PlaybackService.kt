@@ -108,6 +108,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // Online tracks use floyastream:// URIs that are resolved to real stream URLs at load time.
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
@@ -152,6 +153,13 @@ class PlaybackService : MediaSessionService() {
         startPositionSaver()
     }
 
+    companion object {
+        /** The running service (same process), used by the home-screen widget. */
+        @Volatile
+        var instance: PlaybackService? = null
+            private set
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -163,6 +171,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        instance = null
+        app.vesper.player.widget.WidgetUpdater.idle(this)
         flushListen()
         savePositionNow()
         deviceCallback?.let { getSystemService(AudioManager::class.java)?.unregisterAudioDeviceCallback(it) }
@@ -254,6 +264,15 @@ class PlaybackService : MediaSessionService() {
 
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
+            if (events.containsAny(
+                    Player.EVENT_MEDIA_ITEM_TRANSITION,
+                    Player.EVENT_IS_PLAYING_CHANGED,
+                    Player.EVENT_MEDIA_METADATA_CHANGED,
+                    Player.EVENT_TIMELINE_CHANGED,
+                )
+            ) {
+                pushWidget()
+            }
             if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) || (logKey == null && player.currentMediaItem != null)) {
                 if (logKey != player.currentMediaItem?.mediaId) {
                     flushListen()
@@ -312,6 +331,38 @@ class PlaybackService : MediaSessionService() {
                 player.prepare()
                 player.play()
             }
+        }
+    }
+
+    private fun pushWidget() {
+        val item = player.currentMediaItem
+        val snapshot = if (item == null) {
+            app.vesper.player.widget.WidgetUpdater.Snapshot("Floya Music", "Нажмите ▶, чтобы продолжить", false, null)
+        } else {
+            app.vesper.player.widget.WidgetUpdater.Snapshot(
+                title = item.mediaMetadata.title?.toString().orEmpty().ifBlank { "Без названия" },
+                artist = item.mediaMetadata.artist?.toString().orEmpty(),
+                playing = player.isPlaying,
+                artUri = item.mediaMetadata.extras?.getString(EXTRA_TRACK_URI),
+            )
+        }
+        app.vesper.player.widget.WidgetUpdater.push(this, snapshot)
+    }
+
+    /** Buttons on the home-screen widget (called on the main thread by the widget receiver). */
+    fun widgetCommand(action: String) {
+        when (action) {
+            app.vesper.player.widget.WidgetActionReceiver.PLAY_PAUSE -> {
+                if (player.isPlaying) {
+                    player.pause()
+                } else {
+                    if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                    if (player.playbackState == Player.STATE_ENDED) player.seekTo(player.currentMediaItemIndex, 0)
+                    player.play()
+                }
+            }
+            app.vesper.player.widget.WidgetActionReceiver.NEXT -> if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+            app.vesper.player.widget.WidgetActionReceiver.PREVIOUS -> player.seekToPrevious()
         }
     }
 

@@ -13,8 +13,8 @@ android {
         applicationId = "app.vesper.player"
         minSdk = 28
         targetSdk = 35
-        versionCode = 13
-        versionName = "2.0.0"
+        versionCode = 14
+        versionName = "2.1.0"
         vectorDrawables { useSupportLibrary = true }
     }
 

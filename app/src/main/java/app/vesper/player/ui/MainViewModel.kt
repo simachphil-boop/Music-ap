@@ -92,6 +92,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val editor = container.editor
     val studio = container.studio
     val transfer = container.transfer
+    val webSearch = container.webSearch
 
     /** Link received via "Share → Floya Music"; consumed by the downloads screen. */
     val sharedUrl = MutableStateFlow<String?>(null)

@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_OPEN_PLAYER = "app.vesper.player.action.OPEN_PLAYER"
         const val ACTION_OPEN_DOWNLOADS = "app.vesper.player.action.OPEN_DOWNLOADS"
+        const val ACTION_START_WAVE = "app.vesper.player.action.START_WAVE"
         private const val PREFS = "vesper_runtime"
         private const val KEY_ASKED = "permissions_asked"
     }
@@ -78,6 +79,7 @@ class MainActivity : ComponentActivity() {
             requestPermissions = { requestMediaPermissions() },
             openAppSettings = { openAppSettings() },
             openVideos = { list, index -> openVideos(list, index) },
+            openOnlineVideo = { url, title -> startActivity(VideoPlayerActivity.onlineIntent(this, url, title)) },
             pickTextFile = { callback ->
                 pendingTextCallback = callback
                 safeLaunch { textPicker.launch(arrayOf("text/*", "application/octet-stream")) }
@@ -142,6 +144,10 @@ class MainActivity : ComponentActivity() {
         when (intent.action) {
             ACTION_OPEN_PLAYER -> openPlayerSignal++
             ACTION_OPEN_DOWNLOADS -> vm.sharedUrl.value = ""
+            ACTION_START_WAVE -> {
+                vm.startWave(app.vesper.player.data.wave.Vibes.myWave)
+                openPlayerSignal++
+            }
             Intent.ACTION_SEND -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT)
                 val url = app.vesper.player.data.download.Downloader.extractUrl(text)

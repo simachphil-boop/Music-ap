@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -86,6 +87,23 @@ fun HomeScreen() {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
         item(key = "header") { HomeHeader(lib.allTracks.size, vids.all.size) }
+        item(key = "search") {
+            Row(
+                Modifier
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 14.dp)
+                    .fillMaxWidth()
+                    .clip(Vesper.shapes.medium)
+                    .background(c.surfaceHigh)
+                    .clickable { ui.open(Routes.SEARCH) }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Search, null, tint = c.textMuted, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Найти песню, исполнителя или видео", style = MaterialTheme.typography.bodyLarge, color = c.textMuted)
+            }
+        }
         item(key = "wave") { WaveSection() }
 
         if (libraryEmpty) {

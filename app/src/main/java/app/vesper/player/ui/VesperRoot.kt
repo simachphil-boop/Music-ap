@@ -227,6 +227,7 @@ private fun VesperNavHost(nav: NavHostController) {
         composable(Routes.ONLINE_PLAYLIST, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
             app.vesper.player.ui.screens.OnlinePlaylistScreen(entry.arguments?.getLong("id") ?: 0L, onBack = { nav.popBackStack() })
         }
+        composable(Routes.SEARCH) { app.vesper.player.ui.screens.SearchScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.STATS) { app.vesper.player.ui.screens.StatsScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen() }
         composable(

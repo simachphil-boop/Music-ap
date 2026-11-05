@@ -27,6 +27,7 @@ class AppActions(
     val openVideos: (videos: List<VideoEntity>, index: Int) -> Unit,
     val pickImage: (onPicked: (android.net.Uri?) -> Unit) -> Unit,
     val pickTextFile: (onPicked: (android.net.Uri?) -> Unit) -> Unit,
+    val openOnlineVideo: (pageUrl: String, title: String) -> Unit,
 )
 
 /**
@@ -99,6 +100,7 @@ object Routes {
     const val EDITOR = "editor/{kind}/{id}"
     const val LOGIN = "login/{site}"
     const val STATS = "stats"
+    const val SEARCH = "search"
     const val ONLINE_PLAYLIST = "online_playlist/{id}"
 
     fun onlinePlaylist(id: Long) = "online_playlist/$id"
