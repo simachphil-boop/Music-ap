@@ -6,6 +6,7 @@ import app.vesper.player.data.LibraryRepository
 import app.vesper.player.data.db.VesperDatabase
 import app.vesper.player.data.prefs.SettingsRepository
 import app.vesper.player.playback.AudioEffects
+import app.vesper.player.playback.AudioStudio
 import app.vesper.player.playback.PlayerConnection
 import app.vesper.player.playback.SleepTimer
 import app.vesper.player.data.wave.LibraryAnalyzer
@@ -37,6 +38,7 @@ class AppContainer(app: Application) {
     val settings = SettingsRepository(app)
     val library = LibraryRepository(app, database, settings)
     val audioEffects = AudioEffects()
+    val studio = AudioStudio()
     val player = PlayerConnection(app, settings, mainScope)
     val sleepTimer = SleepTimer(mainScope, player)
     val analyzer = LibraryAnalyzer(app, database, appScope)

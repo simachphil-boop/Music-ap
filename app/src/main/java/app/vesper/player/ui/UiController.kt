@@ -37,6 +37,7 @@ class UiController(val nav: NavHostController) {
     var playerExpanded by mutableStateOf(false)
     var queueVisible by mutableStateOf(false)
     var sleepSheetVisible by mutableStateOf(false)
+    var studioVisible by mutableStateOf(false)
 
     var trackOptions by mutableStateOf<Pair<TrackEntity, ExtraTrackAction?>?>(null)
     var videoOptions by mutableStateOf<Pair<VideoEntity, ExtraTrackAction?>?>(null)

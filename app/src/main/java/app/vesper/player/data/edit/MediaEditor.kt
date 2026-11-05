@@ -208,6 +208,51 @@ class MediaEditor(
         }
     }
 
+    /** Saves a library track with a Studio effect (slowed, nightcore, 8D…) as a new MP3. */
+    fun startEffectExport(sourceUri: String, title: String, durationMs: Long, filter: String, label: String, speed: Float) {
+        if (running?.isActive == true) return
+        _job.value = EditJob(title = "$title ($label)", audio = true)
+        running = scope.launch {
+            val work = File(context.cacheDir, "edit").apply { deleteRecursively(); mkdirs() }
+            try {
+                if (!FfmpegTool.init(context)) error("Не удалось запустить обработчик (${FfmpegTool.lastError})")
+                _job.update { it?.copy(stage = "Читаю файл…") }
+                val input = copyToCache(Uri.parse(sourceUri), work)
+                _job.update { it?.copy(stage = "Накладываю эффект…") }
+                val output = File(work, safeName("$title ($label)") + ".mp3")
+                val total = (durationMs / speed.coerceAtLeast(0.1f)).toLong()
+                val variants = listOf(
+                    listOf("-map", "0:a:0", "-map", "0:v:0?", "-af", filter, "-c:a", "libmp3lame", "-q:a", "2", "-c:v", "copy", "-id3v2_version", "3", "-map_metadata", "0"),
+                    listOf("-map", "0:a:0", "-af", filter, "-c:a", "libmp3lame", "-q:a", "2", "-map_metadata", "0"),
+                )
+                var ok = false
+                var log = ""
+                for (v in variants) {
+                    output.delete()
+                    val args = listOf("-y", "-hide_banner", "-nostats", "-progress", "pipe:1", "-i", input.absolutePath) + v + output.absolutePath
+                    val (code, tail) = FfmpegTool.run(context, args, total) { p -> _job.update { it?.copy(progress = p) } }
+                    if (code == 0 && output.length() > 0) { ok = true; break }
+                    log = tail
+                }
+                if (!ok) error("Не удалось наложить эффект" + log.lines().lastOrNull { it.isNotBlank() }?.let { ": ${it.take(120)}" }.orEmpty())
+                _job.update { it?.copy(stage = "Сохраняю…", progress = 1f) }
+                val uri = MediaPublisher.publish(context, output, true)
+                val id = when (val r = library.importSingle(uri)) {
+                    is ProbeResult.Audio -> r.track.id.also { library.markDownloaded(it) }
+                    else -> null
+                }
+                _job.update { it?.copy(running = false, stage = "Готово", resultId = id) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _job.value = null
+                throw e
+            } catch (e: Exception) {
+                _job.update { it?.copy(running = false, error = e.message ?: "Не удалось обработать файл") }
+            } finally {
+                work.deleteRecursively()
+            }
+        }
+    }
+
     fun cancel() {
         running?.cancel()
         _job.value = null

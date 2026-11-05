@@ -139,6 +139,7 @@ fun GlobalSheets() {
 
     if (ui.queueVisible) QueueSheet(onDismiss = { ui.queueVisible = false })
     if (ui.sleepSheetVisible) SleepTimerSheet(onDismiss = { ui.sleepSheetVisible = false })
+    if (ui.studioVisible) app.vesper.player.ui.player.StudioSheet(onDismiss = { ui.studioVisible = false })
 }
 
 @Composable

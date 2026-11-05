@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VolumeDown
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -291,6 +292,21 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 }
             }
 
+            val studioNow by vm.studio.state.collectAsStateWithLifecycle()
+            if (!studioNow.isNormal) {
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    Text(
+                        "✦ " + studioNow.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = c.accentBright,
+                        modifier = Modifier
+                            .clip(Vesper.shapes.chip)
+                            .background(c.highlight)
+                            .clickable { ui.studioVisible = true }
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
             Spacer(Modifier.height(14.dp))
             SeekBar(progress.positionMs, progress.durationMs, onSeek = { vm.player.seekTo(it) })
             Spacer(Modifier.height(6.dp))
@@ -337,6 +353,12 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PressableIcon(Icons.Rounded.QueueMusic, "Очередь", onClick = { ui.queueVisible = true }, tint = c.textSecondary)
+                val studio by vm.studio.state.collectAsStateWithLifecycle()
+                PressableIcon(
+                    Icons.Rounded.Tune, "Студия звука",
+                    onClick = { ui.studioVisible = true },
+                    tint = if (studio.isNormal) c.textSecondary else c.accentBright,
+                )
                 SleepButton(active = sleep.active, endOfTrack = sleep.endOfTrack, endsAt = sleep.endsAtMillis, onClick = { ui.sleepSheetVisible = true })
                 PressableIcon(
                     Icons.Rounded.Equalizer, "Эквалайзер",

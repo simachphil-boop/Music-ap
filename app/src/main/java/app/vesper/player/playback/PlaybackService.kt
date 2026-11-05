@@ -75,7 +75,7 @@ class PlaybackService : MediaSessionService() {
         val upstream = DefaultDataSource.Factory(this, http)
         val appContext = applicationContext
         val resolving = ResolvingDataSource.Factory(upstream) { spec -> StreamResolver.resolveSpec(appContext, spec) }
-        player = ExoPlayer.Builder(this)
+        player = ExoPlayer.Builder(this, StudioRenderersFactory(this, container.studio.processor))
             .setMediaSourceFactory(DefaultMediaSourceFactory(resolving))
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -143,6 +143,11 @@ class PlaybackService : MediaSessionService() {
             container.settings.settings.collect { s ->
                 player.setHandleAudioBecomingNoisy(s.pauseOnDisconnect)
                 resumeOnConnect = s.resumeOnConnect
+            }
+        }
+        scope.launch {
+            container.studio.state.collect { s ->
+                player.playbackParameters = androidx.media3.common.PlaybackParameters(s.speed, s.pitch)
             }
         }
         scope.launch {
