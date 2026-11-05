@@ -34,6 +34,8 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import app.vesper.player.ui.components.ScreenHeader
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -86,7 +88,7 @@ import app.vesper.player.ui.theme.themedLabel
 import kotlinx.coroutines.launch
 
 @Composable
-fun DownloadsScreen(onBack: () -> Unit) {
+fun DownloadsScreen() {
     val vm = LocalViewModel.current
     val ui = LocalUi.current
     val actions = LocalAppActions.current
@@ -99,6 +101,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
     val lib by vm.library.collectAsStateWithLifecycle()
     val vids by vm.videos.collectAsStateWithLifecycle()
     val bottom = LocalBottomInset.current
+    val scanning by vm.scanning.collectAsStateWithLifecycle()
 
     var url by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -148,12 +151,10 @@ fun DownloadsScreen(onBack: () -> Unit) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom + 16.dp)) {
         item {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                PressableIcon(Icons.Rounded.ArrowBack, "Назад", onClick = onBack)
-            }
+            ScreenHeader("Загрузки", subtitle = "Скачивание и импорт")
             Column(Modifier.padding(horizontal = 20.dp)) {
                 OverlineText("По ссылке", color = c.ornament)
-                Text("Загрузки", style = MaterialTheme.typography.displaySmall, color = c.textPrimary)
+                Spacer(Modifier.height(4.dp))
                 Text(
                     "YouTube, VK, Rutube, TikTok, SoundCloud и сотни других сайтов, а также прямые ссылки на файлы. " +
                         "Совет: в приложении YouTube нажмите «Поделиться» → Floya Music.",
@@ -367,6 +368,36 @@ fun DownloadsScreen(onBack: () -> Unit) {
             }
         }
 
+        item(key = "import") {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 24.dp)) {
+                OverlineText("С телефона", color = c.ornament)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Файлы не копируются — Floya Music просто запоминает, где они лежат.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textMuted,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ImportTile(Icons.Rounded.MusicNote, "Аудиофайлы", "MP3, FLAC, M4A…", Modifier.weight(1f), onClick = actions.importAudio)
+                    ImportTile(Icons.Rounded.Videocam, "Видеофайлы", "MP4, MKV, WEBM…", Modifier.weight(1f), onClick = actions.importVideo)
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ImportTile(Icons.Rounded.CreateNewFolder, "Папку целиком", "Всё аудио и видео", Modifier.weight(1f), onClick = actions.importFolder)
+                    ImportTile(
+                        Icons.Rounded.Refresh,
+                        if (scanning) "Сканирую…" else "Найти на телефоне",
+                        "${lib.allTracks.size} аудио · ${vids.all.size} видео",
+                        Modifier.weight(1f),
+                        onClick = {
+                            if (vm.hasAudioPermission() || vm.hasVideoPermission()) vm.rescan() else actions.requestPermissions()
+                        },
+                    )
+                }
+            }
+        }
+
         item(key = "accounts") {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 20.dp)) {
                 OverlineText("Аккаунты для загрузки")
@@ -510,5 +541,29 @@ private fun guessSite(url: String): CookieSite? {
         "instagram" in u -> CookieSite.INSTAGRAM
         "tiktok" in u -> CookieSite.TIKTOK
         else -> null
+    }
+}
+
+@Composable
+private fun ImportTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val c = Vesper.colors
+    Column(
+        modifier
+            .clip(Vesper.shapes.medium)
+            .background(c.surface)
+            .border(1.dp, c.outline, Vesper.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+    ) {
+        Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(10.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

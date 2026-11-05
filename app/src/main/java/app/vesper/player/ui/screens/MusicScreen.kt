@@ -242,7 +242,7 @@ fun ImportSheet(onDismiss: () -> Unit) {
             SheetAction(Icons.Rounded.Refresh, "Сканировать устройство") {
                 if (vm.hasAudioPermission() || vm.hasVideoPermission()) vm.rescan() else actions.requestPermissions()
             },
-            SheetAction(Icons.Rounded.Download, "Скачать по ссылке") { ui.open(app.vesper.player.ui.Routes.DOWNLOADS) },
+            SheetAction(Icons.Rounded.Download, "Скачать по ссылке") { ui.goToTab(app.vesper.player.ui.Routes.DOWNLOADS) },
             SheetAction(Icons.Rounded.MusicNote, "Импортировать аудиофайлы") { actions.importAudio() },
             SheetAction(Icons.Rounded.Movie, "Импортировать видео") { actions.importVideo() },
             SheetAction(Icons.Rounded.CreateNewFolder, "Импортировать папку") { actions.importFolder() },

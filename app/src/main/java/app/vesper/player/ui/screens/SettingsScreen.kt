@@ -188,7 +188,7 @@ fun SettingsScreen() {
                 "Скачать по ссылке",
                 subtitle = "Видео и музыка с YouTube, VK и других сайтов",
                 icon = Icons.Rounded.Download,
-                onClick = { ui.open(Routes.DOWNLOADS) },
+                onClick = { ui.goToTab(Routes.DOWNLOADS) },
                 trailing = { Chevron() },
             )
         }

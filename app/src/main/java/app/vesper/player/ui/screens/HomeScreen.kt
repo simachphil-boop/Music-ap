@@ -140,7 +140,7 @@ fun HomeScreen() {
                     if (lib.favorites.isEmpty()) vm.message("В избранном пока пусто — отмечайте треки сердцем")
                     else vm.player.playTracks(lib.favorites, 0, shuffle = false)
                 }
-                QuickAction(Icons.Rounded.Download, "По ссылке", Modifier.weight(1f)) { ui.open(Routes.DOWNLOADS) }
+                QuickAction(Icons.Rounded.Download, "По ссылке", Modifier.weight(1f)) { ui.goToTab(Routes.DOWNLOADS) }
             }
         }
 

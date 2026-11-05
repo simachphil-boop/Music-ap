@@ -83,7 +83,7 @@ fun VideosScreen() {
             title = "Видео",
             subtitle = "${videosCount(vids.all.size)} · ${formatTotalDuration(vids.all.sumOf { it.durationMs })}",
         ) {
-            PressableIcon(Icons.Rounded.Download, "Скачать по ссылке", onClick = { ui.open(app.vesper.player.ui.Routes.DOWNLOADS) })
+            PressableIcon(Icons.Rounded.Download, "Скачать по ссылке", onClick = { ui.goToTab(app.vesper.player.ui.Routes.DOWNLOADS) })
             PressableIcon(Icons.Rounded.Search, "Поиск", onClick = { searching = true })
             PressableIcon(Icons.Rounded.Sort, "Сортировка", onClick = { sortSheet = true })
             PressableIcon(Icons.Rounded.Add, "Добавить видео", onClick = { importSheet = true })

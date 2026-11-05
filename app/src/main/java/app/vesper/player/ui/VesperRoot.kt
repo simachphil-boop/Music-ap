@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -84,6 +85,7 @@ private val tabs = listOf(
     Tab(Routes.MUSIC, "Музыка", Icons.Rounded.LibraryMusic),
     Tab(Routes.VIDEOS, "Видео", Icons.Rounded.VideoLibrary),
     Tab(Routes.PLAYLISTS, "Плейлисты", Icons.Rounded.QueueMusic),
+    Tab(Routes.DOWNLOADS, "Загрузки", Icons.Rounded.Download),
     Tab(Routes.SETTINGS, "Настройки", Icons.Rounded.Settings),
 )
 
@@ -100,7 +102,7 @@ fun VesperRoot(vm: MainViewModel, actions: AppActions, openPlayerSignal: Int) {
     LaunchedEffect(shared) {
         if (shared != null && nav.currentBackStackEntry?.destination?.route != Routes.DOWNLOADS) {
             ui.playerExpanded = false
-            ui.open(Routes.DOWNLOADS)
+            ui.goToTab(Routes.DOWNLOADS)
         }
     }
     LaunchedEffect(openPlayerSignal) {
@@ -222,7 +224,7 @@ private fun VesperNavHost(nav: NavHostController) {
                 .getOrDefault(app.vesper.player.data.download.CookieSite.YOUTUBE)
             app.vesper.player.ui.screens.LoginScreen(site, onBack = { nav.popBackStack() })
         }
-        composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen() }
         composable(
             Routes.GROUP,
             arguments = listOf(
