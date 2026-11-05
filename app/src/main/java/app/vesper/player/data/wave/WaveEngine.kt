@@ -1,10 +1,17 @@
 package app.vesper.player.data.wave
 
+import android.content.Context
+import app.vesper.player.data.db.MediaSource
 import app.vesper.player.data.db.TrackEntity
 import app.vesper.player.data.db.TrackFeaturesEntity
 import app.vesper.player.data.db.VesperDatabase
+import app.vesper.player.data.download.Downloader
+import app.vesper.player.data.download.SearchResult
+import app.vesper.player.data.download.SearchSource
+import app.vesper.player.playback.OnlineItem
 import app.vesper.player.playback.PlayerConnection
 import app.vesper.player.playback.PlayerUiState
+import app.vesper.player.playback.QueueEntry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,8 +24,15 @@ import kotlin.math.ln
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+/** Where the Wave takes music from. Files that were already on the phone are never used. */
+enum class WaveMode(val title: String) {
+    ONLINE("Онлайн"),
+    DOWNLOADS("Мои загрузки"),
+}
+
 data class WaveState(
     val vibe: Vibe? = null,
+    val mode: WaveMode = WaveMode.ONLINE,
     val active: Boolean = false,
     val starting: Boolean = false,
     /** Sound profile of the track currently playing (drives the wave animation). */
@@ -26,26 +40,43 @@ data class WaveState(
 )
 
 /**
- * "Wave": an endless, self-extending queue built from the local library. Ranks tracks by
- * how they sound (measured on-device), the chosen mood/activity, and listening feedback
- * (favourites, plays, skips, dislikes). Works fully offline.
+ * "Wave": an endless, self-extending queue.
+ * - ONLINE streams internet music found by mood/activity queries, personalised by the
+ *   artists you download and like.
+ * - DOWNLOADS ranks tracks downloaded through the app by measured sound and feedback.
  */
 class WaveEngine(
+    context: Context,
     private val db: VesperDatabase,
     private val player: PlayerConnection,
+    private val downloader: Downloader,
     private val scope: CoroutineScope,
 ) {
     private val dao = db.wave()
-    private val _state = MutableStateFlow(WaveState())
+    private val prefs = context.getSharedPreferences("floya_wave", Context.MODE_PRIVATE)
+    private val _state = MutableStateFlow(
+        WaveState(mode = runCatching { WaveMode.valueOf(prefs.getString(KEY_MODE, null) ?: "") }.getOrDefault(WaveMode.ONLINE)),
+    )
     val state: StateFlow<WaveState> = _state.asStateFlow()
 
+    // Downloads mode
     private val recentPicks = ArrayDeque<Long>()
     private val recentArtists = ArrayDeque<String>()
+    // Online mode
+    private val onlineSeen = HashSet<String>()
+    private var queries: List<String> = emptyList()
+    private var queryCursor = 0
+
     private var extending = false
     private var profileFor: Long = -1
 
     init {
         scope.launch { player.state.collect { onPlayerState(it) } }
+    }
+
+    fun setMode(mode: WaveMode) {
+        prefs.edit().putString(KEY_MODE, mode.name).apply()
+        _state.update { it.copy(mode = mode) }
     }
 
     private fun onPlayerState(s: PlayerUiState) {
@@ -62,11 +93,17 @@ class WaveEngine(
         }
         if (active && !extending && !_state.value.starting && s.queue.isNotEmpty() && s.queue.size - 1 - s.currentIndex <= 2) {
             extending = true
-            val inQueue = s.queue.map { it.trackId }.toSet()
+            val vibe = _state.value.vibe ?: Vibes.myWave
+            val online = s.queue.any { it.online }
             scope.launch {
                 try {
-                    val picks = pick(_state.value.vibe ?: Vibes.myWave, 10, inQueue)
-                    if (picks.isNotEmpty()) player.addToQueue(picks, silent = true)
+                    if (online) {
+                        val exclude = s.queue.mapNotNull { it.pageUrl }.toSet()
+                        player.addOnline(pickOnline(vibe, 8, exclude))
+                    } else {
+                        val picks = pickDownloads(vibe, 10, s.queue.map { it.trackId }.toSet())
+                        if (picks.isNotEmpty()) player.addToQueue(picks, silent = true)
+                    }
                 } finally {
                     extending = false
                 }
@@ -79,40 +116,139 @@ class WaveEngine(
         _state.update { it.copy(starting = true) }
         scope.launch {
             try {
-                recentPicks.clear()
-                recentArtists.clear()
-                val picks = pick(vibe, 15, emptySet())
-                if (picks.isEmpty()) {
-                    player.notify("Для волны нужна музыка в библиотеке")
-                    return@launch
+                when (_state.value.mode) {
+                    WaveMode.ONLINE -> {
+                        onlineSeen.clear()
+                        queries = buildQueries(vibe)
+                        queryCursor = 0
+                        val picks = pickOnline(vibe, 10, emptySet())
+                        if (picks.isEmpty()) {
+                            player.notify("Не удалось найти музыку — проверьте интернет или включите «Мои загрузки»")
+                            return@launch
+                        }
+                        _state.update { it.copy(vibe = vibe) }
+                        player.playOnline(picks, 0, owner = OWNER)
+                    }
+                    WaveMode.DOWNLOADS -> {
+                        recentPicks.clear()
+                        recentArtists.clear()
+                        val picks = pickDownloads(vibe, 15, emptySet())
+                        if (picks.isEmpty()) {
+                            player.notify("Скачанной музыки пока нет — скачайте треки во вкладке «Загрузки» или включите «Онлайн»")
+                            return@launch
+                        }
+                        _state.update { it.copy(vibe = vibe) }
+                        player.playTracks(picks, 0, shuffle = false, owner = OWNER)
+                    }
                 }
-                _state.update { it.copy(vibe = vibe) }
-                player.playTracks(picks, 0, shuffle = false, owner = OWNER)
             } finally {
                 _state.update { it.copy(starting = false) }
             }
         }
     }
 
-    /** "Not for me": never pick this track again and skip it now. */
-    fun dislike(trackId: Long) {
-        scope.launch {
-            dao.ensureStats(trackId)
-            dao.setBanned(trackId, true)
+    /** "Not for me": skip now and never pick again. */
+    fun dislike(entry: QueueEntry) {
+        val page = entry.pageUrl
+        if (page != null) {
+            prefs.edit().putStringSet(KEY_BANNED, bannedUrls() + page).apply()
+        } else if (entry.trackId > 0) {
+            scope.launch {
+                dao.ensureStats(entry.trackId)
+                dao.setBanned(entry.trackId, true)
+            }
         }
         player.next()
         player.notify("Больше не попадётся в волне")
     }
 
+    /** "More like this" for internet tracks: remember the artist for future waves. */
+    fun likeOnline(entry: QueueEntry) {
+        val artist = entry.artist.trim()
+        if (artist.isBlank()) return
+        val list = likedArtists().filterNot { it.equals(artist, true) }
+        prefs.edit().putString(KEY_LIKED, (listOf(artist) + list).take(40).joinToString("\n")).apply()
+        player.notify("Учту: больше похожего на $artist")
+    }
+
+    fun isLikedArtist(artist: String): Boolean = likedArtists().any { it.equals(artist.trim(), true) }
+
     fun resetLearning() {
         scope.launch {
             dao.clearStats()
+            prefs.edit().remove(KEY_BANNED).remove(KEY_LIKED).apply()
             player.notify("Обучение волны сброшено")
         }
     }
 
-    private suspend fun pick(vibe: Vibe, count: Int, exclude: Set<Long>): List<TrackEntity> {
-        val tracks = db.tracks().getAll()
+    private fun bannedUrls(): Set<String> = prefs.getStringSet(KEY_BANNED, emptySet()).orEmpty()
+    private fun likedArtists(): List<String> = prefs.getString(KEY_LIKED, "").orEmpty().lines().filter { it.isNotBlank() }
+
+    // ---------------------------------------------------------------------------------------------
+    // Online
+    // ---------------------------------------------------------------------------------------------
+
+    private suspend fun buildQueries(vibe: Vibe): List<String> {
+        val base = Vibes.onlineQueries(vibe)
+        val downloaded = db.tracks().getAll().filter { it.source == MediaSource.DOWNLOADED }
+        val topArtists = downloaded
+            .filter { !it.artist.startsWith("Неизвестн") }
+            .groupBy { it.artist }
+            .entries.sortedByDescending { (_, list) -> list.sumOf { it.playCount + if (it.favorite) 5 else 0 } + list.size }
+            .map { it.key }
+            .take(10)
+        val seeds = (likedArtists() + topArtists).distinctBy { it.lowercase() }
+        val list = when (vibe.strategy) {
+            VibeStrategy.TASTE -> seeds.take(12) + base.take(2)
+            VibeStrategy.FAVORITES -> seeds.ifEmpty { base }
+            else -> base
+        }
+        return list.ifEmpty { base }.shuffled()
+    }
+
+    private suspend fun pickOnline(vibe: Vibe, count: Int, exclude: Set<String>): List<OnlineItem> {
+        if (queries.isEmpty()) queries = buildQueries(vibe)
+        val banned = bannedUrls()
+        val longForm = vibe.id in setOf("focus", "sleep", "relax")
+        val maxDuration = if (longForm) 1800 else 600
+        val out = ArrayList<OnlineItem>()
+        var attempts = 0
+        while (out.size < count && attempts < 4) {
+            val q = queries[queryCursor % queries.size]
+            queryCursor++
+            attempts++
+            val results = downloader.search(q, SearchSource.YOUTUBE).getOrNull() ?: continue
+            val authorsInBatch = HashSet<String>()
+            results
+                .filter { it.durationSec in 90..maxDuration }
+                .filter { longForm || !isCompilation(it.title) }
+                .filter { it.url !in onlineSeen && it.url !in banned && it.url !in exclude }
+                .shuffled()
+                .forEach { r ->
+                    if (out.size >= count) return@forEach
+                    val author = r.author.lowercase()
+                    if (author.isNotBlank() && !authorsInBatch.add(author)) return@forEach
+                    out += r.toOnline()
+                    onlineSeen += r.url
+                }
+        }
+        return out.shuffled()
+    }
+
+    private fun isCompilation(title: String): Boolean {
+        val t = title.lowercase()
+        return listOf("mix", "микс", "playlist", "плейлист", "full album", "сборник", "подборка", "compilation", "1 hour", "1 час", "hours", "часа", "top 10", "топ 10", "non-stop", "нон-стоп")
+            .any { t.contains(it) }
+    }
+
+    private fun SearchResult.toOnline() = OnlineItem(url, title, author, durationSec, thumbnail)
+
+    // ---------------------------------------------------------------------------------------------
+    // Downloads (local files saved by the app)
+    // ---------------------------------------------------------------------------------------------
+
+    private suspend fun pickDownloads(vibe: Vibe, count: Int, exclude: Set<Long>): List<TrackEntity> {
+        val tracks = db.tracks().getAll().filter { it.source == MediaSource.DOWNLOADED }
         val features = dao.allFeatures().associateBy { it.trackId }
         val stats = dao.allStats().associateBy { it.trackId }
         return withContext(Dispatchers.Default) {
@@ -158,7 +294,6 @@ class WaveEngine(
                 t to score + Random.nextFloat() * 0.22f
             }.sortedByDescending { it.second }
 
-            // Greedy pick with artist spacing so the same artist doesn't repeat back-to-back.
             val out = ArrayList<TrackEntity>(count)
             val artists = ArrayDeque(recentArtists)
             for ((t, _) in scored) {
@@ -183,7 +318,6 @@ class WaveEngine(
         }
     }
 
-    /** Average sound of what the listener loves — the centre of "Моя волна". */
     private fun tasteProfile(tracks: List<TrackEntity>, features: Map<Long, TrackFeaturesEntity>): SoundProfile? {
         var w = 0f
         var e = 0f
@@ -215,5 +349,8 @@ class WaveEngine(
 
     companion object {
         const val OWNER = "wave"
+        private const val KEY_MODE = "mode"
+        private const val KEY_BANNED = "banned_urls"
+        private const val KEY_LIKED = "liked_artists"
     }
 }

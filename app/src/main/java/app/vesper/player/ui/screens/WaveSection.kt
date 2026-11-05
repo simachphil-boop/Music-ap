@@ -149,7 +149,12 @@ fun WaveSection() {
                             color = c.textPrimary,
                         )
                         Text(
-                            if (wave.active) "Пропускайте — волна учится" else "Подбор по звучанию и вашему вкусу",
+                            when {
+                                wave.starting -> "Подбираю музыку…"
+                                wave.active -> "Пропускайте — волна учится"
+                                wave.mode == app.vesper.player.data.wave.WaveMode.ONLINE -> "Из интернета, по вашему вкусу"
+                                else -> "Из ваших загрузок"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = c.textMuted,
                         )
@@ -158,7 +163,27 @@ fun WaveSection() {
             }
         }
 
-        if (analysis.total > 0 && !analysis.complete) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            app.vesper.player.data.wave.WaveMode.entries.forEach { m ->
+                app.vesper.player.ui.components.VesperChip(m.title, wave.mode == m, onClick = { vm.wave.setMode(m) })
+            }
+        }
+        Text(
+            if (wave.mode == app.vesper.player.data.wave.WaveMode.ONLINE) {
+                "Музыка из интернета под настроение. Понравился трек — ❤ или скачайте его кнопкой ↓ в плеере."
+            } else {
+                "Только треки, которые вы скачали через Floya Music."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textMuted,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
+        )
+
+        if (wave.mode == app.vesper.player.data.wave.WaveMode.DOWNLOADS && analysis.total > 0 && !analysis.complete) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp)) {
                 Text(
                     "Floya изучает звучание библиотеки · ${analysis.analyzed} из ${analysis.total}",

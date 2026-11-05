@@ -276,6 +276,9 @@ class LibraryRepository(
 
     suspend fun renameVideo(id: Long, title: String) = videoDao.rename(id, title.trim())
 
+    suspend fun markDownloaded(id: Long) = trackDao.markDownloaded(id)
+    suspend fun migrateDownloadFlags() = trackDao.migrateDownloadFlags()
+
     suspend fun clearHistory() {
         trackDao.clearHistory()
         videoDao.clearHistory()

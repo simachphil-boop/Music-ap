@@ -137,6 +137,24 @@ object Vibes {
 
     fun byId(id: String?): Vibe? = all.firstOrNull { it.id == id }
 
+    /** Search phrases used by the online Wave (YouTube) for each preset. */
+    fun onlineQueries(vibe: Vibe): List<String> = when (vibe.id) {
+        "energetic" -> listOf("энергичная музыка", "upbeat energetic songs", "rock hits energetic", "бодрые песни", "high energy pop songs")
+        "happy" -> listOf("весёлые песни", "happy songs", "feel good music", "позитивная музыка", "summer hits dance")
+        "calm" -> listOf("спокойная музыка", "calm acoustic songs", "chill songs", "мягкая музыка для души", "soft indie songs")
+        "sad" -> listOf("грустные песни", "sad songs", "melancholic songs", "грустная музыка до слёз", "emotional ballads")
+        "dark" -> listOf("dark music", "мрачная музыка", "darkwave songs", "post-punk songs", "gothic rock songs")
+        "workout" -> listOf("музыка для тренировки", "workout music", "gym motivation songs", "phonk workout", "running music")
+        "focus" -> listOf("lofi hip hop", "музыка для учёбы", "focus music instrumental", "piano for studying", "ambient focus")
+        "drive" -> listOf("музыка в машину", "driving songs", "road trip music", "synthwave drive", "песни для дороги")
+        "party" -> listOf("музыка для вечеринки", "party hits", "dance hits", "клубная музыка", "house music hits")
+        "relax" -> listOf("музыка для отдыха", "relaxing music", "chillout lounge", "jazz relax", "acoustic relax songs")
+        "sleep" -> listOf("музыка для сна", "sleep music", "calm piano sleep", "ambient sleep", "rain sounds music")
+        "new" -> listOf("новинки музыки", "new music this week", "новые песни", "new songs", "fresh releases")
+        "old" -> listOf("хиты 2000-х", "хиты 2010-х", "2000s hits", "2010s hits", "хиты 90-х")
+        else -> listOf("популярные песни", "top hits", "музыка новинки", "best songs", "хиты")
+    }
+
     /** 0..1 — how well a sound profile matches the vibe's targets. */
     fun fit(vibe: Vibe, p: SoundProfile, track: TrackEntity): Float {
         var sum = 0f

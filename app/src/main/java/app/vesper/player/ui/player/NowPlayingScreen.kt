@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VolumeDown
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -256,7 +257,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                             color = c.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable {
+                            modifier = Modifier.clickable(enabled = !entry.online) {
                                 ui.playerExpanded = false
                                 ui.openGroup(GroupType.ARTIST, track?.artist ?: entry.artist)
                             },
@@ -267,13 +268,26 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     PressableIcon(
                         androidx.compose.material.icons.Icons.Rounded.ThumbDown,
                         "Не нравится",
-                        onClick = { vm.wave.dislike(current.trackId) },
+                        onClick = { vm.wave.dislike(current) },
                         tint = c.textMuted,
                         size = 22.dp,
                     )
                 }
                 if (track != null) {
                     FavoriteButton(track.favorite, onToggle = { vm.toggleFavorite(track) }, size = 28.dp)
+                } else if (current.online) {
+                    var liked by remember(current.key) { mutableStateOf(vm.wave.isLikedArtist(current.artist)) }
+                    FavoriteButton(liked, onToggle = {
+                        if (!liked) vm.wave.likeOnline(current)
+                        liked = true
+                    }, size = 28.dp)
+                    PressableIcon(
+                        androidx.compose.material.icons.Icons.Rounded.Download,
+                        "Скачать MP3",
+                        onClick = { vm.downloadOnline(current) },
+                        tint = c.accentBright,
+                        size = 24.dp,
+                    )
                 }
             }
 

@@ -70,6 +70,18 @@ object ArtworkLoader {
     }
 
     private fun decode(context: Context, uri: Uri, isVideo: Boolean, size: Int): Bitmap? {
+        if (uri.scheme == "http" || uri.scheme == "https") {
+            val conn = (java.net.URL(uri.toString()).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+            }
+            return try {
+                decodeSampled(conn.inputStream.use { it.readBytes() }, size)
+            } finally {
+                conn.disconnect()
+            }
+        }
+        if (uri.toString().isBlank()) return null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uri.authority == MediaStore.AUTHORITY) {
             runCatching {
                 return context.contentResolver.loadThumbnail(uri, Size(size, size), null)

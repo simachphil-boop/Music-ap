@@ -9,6 +9,8 @@ import androidx.room.PrimaryKey
 object MediaSource {
     const val MEDIA_STORE = 0
     const val IMPORTED = 1
+    /** Saved by Floya Music itself (downloaded from the internet). */
+    const val DOWNLOADED = 2
 }
 
 object PlaylistKind {

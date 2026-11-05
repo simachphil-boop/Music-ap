@@ -383,7 +383,7 @@ class Downloader(
 
             val uri = MediaPublisher.publish(context, file, task.kind == DownloadKind.AUDIO)
             val mediaId = when (val r = library.importSingle(uri)) {
-                is ProbeResult.Audio -> r.track.id
+                is ProbeResult.Audio -> r.track.id.also { library.markDownloaded(it) }
                 is ProbeResult.Video -> r.video.id
                 is ProbeResult.Unsupported -> null
             }

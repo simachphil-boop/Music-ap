@@ -17,6 +17,9 @@ import app.vesper.player.data.prefs.AppSettings
 import app.vesper.player.data.prefs.SortOrder
 import app.vesper.player.data.wave.AnalysisState
 import app.vesper.player.data.wave.Vibe
+import app.vesper.player.playback.QueueEntry
+import app.vesper.player.data.download.LinkInfo
+import app.vesper.player.data.download.DownloadKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -391,8 +394,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playerMessages() = player.messages
 
+    /** Saves the internet track that is playing as an MP3 in the library. */
+    fun downloadOnline(entry: QueueEntry) {
+        val page = entry.pageUrl ?: return
+        downloader.download(
+            LinkInfo(
+                url = page,
+                title = entry.title,
+                uploader = entry.artist,
+                durationSec = (entry.durationMs / 1000).toInt(),
+                thumbnail = entry.uri.ifBlank { null },
+                source = "",
+                heights = emptyList(),
+            ),
+            DownloadKind.AUDIO,
+            null,
+        )
+        _messages.tryEmit("Скачиваю «${entry.title}» в MP3 — прогресс во вкладке «Загрузки»")
+    }
+
     init {
         player.connect()
         container.analyzer.start()
+        viewModelScope.launch { runCatching { repo.migrateDownloadFlags() } }
     }
 }

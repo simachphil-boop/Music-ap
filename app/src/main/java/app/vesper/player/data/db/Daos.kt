@@ -49,6 +49,13 @@ interface TrackDao {
     @Query("UPDATE tracks SET title = :title, artist = :artist, album = :album, genre = :genre, edited = 1 WHERE id = :id")
     suspend fun editInfo(id: Long, title: String, artist: String, album: String, genre: String)
 
+    @Query("UPDATE tracks SET source = 2 WHERE id = :id")
+    suspend fun markDownloaded(id: Long)
+
+    /** Earlier versions stored downloads as plain imports; they live in MediaStore or a /Floya/ folder. */
+    @Query("UPDATE tracks SET source = 2 WHERE source = 1 AND (uri LIKE 'content://media/%' OR uri LIKE 'file://%/Floya/%')")
+    suspend fun migrateDownloadFlags()
+
     @Query("UPDATE tracks SET lastPlayedAt = 0, playCount = 0")
     suspend fun clearHistory()
 }

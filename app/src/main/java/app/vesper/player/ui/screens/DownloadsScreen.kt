@@ -61,6 +61,8 @@ import app.vesper.player.data.download.DownloadKind
 import app.vesper.player.data.download.DownloadStatus
 import app.vesper.player.data.download.DownloadTask
 import app.vesper.player.data.download.LinkInfo
+import app.vesper.player.playback.OnlineItem
+import app.vesper.player.ui.components.SecondaryButton
 import app.vesper.player.data.download.SearchResult
 import app.vesper.player.data.download.SearchSource
 import app.vesper.player.ui.components.ChipRow
@@ -343,7 +345,16 @@ fun DownloadsScreen() {
                             Text(r.author, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    Icon(Icons.Rounded.Download, "Скачать", tint = c.accentBright, modifier = Modifier.padding(start = 8.dp).size(22.dp))
+                    PressableIcon(
+                        Icons.Rounded.PlayArrow, "Слушать",
+                        onClick = {
+                            val list = results.map { OnlineItem(it.url, it.title, it.author, it.durationSec, it.thumbnail) }
+                            vm.player.playOnline(list, results.indexOf(r))
+                        },
+                        tint = c.accentBright,
+                        size = 26.dp,
+                    )
+                    Icon(Icons.Rounded.Download, "Скачать", tint = c.textMuted, modifier = Modifier.padding(start = 2.dp).size(20.dp))
                 }
             }
         }
@@ -432,6 +443,13 @@ fun DownloadsScreen() {
                             }
                         }
                         Spacer(Modifier.height(16.dp))
+                        SecondaryButton(
+                            "Слушать онлайн",
+                            onClick = { vm.player.playOnline(listOf(OnlineItem(i.url, i.title, i.uploader, i.durationSec, i.thumbnail))) },
+                            icon = Icons.Rounded.PlayArrow,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(10.dp))
                         PrimaryButton(
                             "Скачать",
                             onClick = {

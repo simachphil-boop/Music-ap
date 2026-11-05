@@ -40,8 +40,8 @@ class AppContainer(app: Application) {
     val player = PlayerConnection(app, settings, mainScope)
     val sleepTimer = SleepTimer(mainScope, player)
     val analyzer = LibraryAnalyzer(app, database, appScope)
-    val wave = WaveEngine(database, player, mainScope)
     val downloader = Downloader(app, library, appScope)
+    val wave = WaveEngine(app, database, player, downloader, mainScope)
     val editor = MediaEditor(app, library, appScope)
 }
 

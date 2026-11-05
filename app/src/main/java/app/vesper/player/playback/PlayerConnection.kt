@@ -35,7 +35,11 @@ data class QueueEntry(
     val album: String,
     val uri: String,
     val durationMs: Long,
-)
+    /** Set for internet tracks (streamed, not in the library). */
+    val pageUrl: String? = null,
+) {
+    val online: Boolean get() = pageUrl != null
+}
 
 data class PlayerUiState(
     val connected: Boolean = false,
@@ -191,6 +195,7 @@ class PlayerConnection(
                 album = md.albumTitle?.toString().orEmpty(),
                 uri = item.trackUri().orEmpty(),
                 durationMs = md.extras?.getLong(EXTRA_DURATION) ?: 0L,
+                pageUrl = item.pageUrl(),
             )
         }
         _state.update { it.copy(queue = entries) }
@@ -241,6 +246,24 @@ class PlayerConnection(
             c.prepare()
             c.play()
         }
+    }
+
+    /** Streams internet tracks. */
+    fun playOnline(items: List<OnlineItem>, startIndex: Int = 0, owner: String? = null) {
+        if (items.isEmpty()) return
+        withController { c ->
+            c.setMediaItems(items.map { it.toMediaItem() }, startIndex.coerceIn(0, items.lastIndex), 0)
+            setShuffleFlag(false)
+            setOriginalOrder(emptyList())
+            _state.update { it.copy(queueOwner = owner) }
+            c.prepare()
+            c.play()
+        }
+    }
+
+    fun addOnline(items: List<OnlineItem>) {
+        if (items.isEmpty()) return
+        withController { c -> c.addMediaItems(items.map { it.toMediaItem() }) }
     }
 
     fun notify(message: String) {

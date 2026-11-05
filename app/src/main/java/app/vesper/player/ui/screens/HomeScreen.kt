@@ -86,6 +86,7 @@ fun HomeScreen() {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
         item(key = "header") { HomeHeader(lib.allTracks.size, vids.all.size) }
+        item(key = "wave") { WaveSection() }
 
         if (libraryEmpty) {
             item(key = "empty") {
@@ -118,10 +119,6 @@ fun HomeScreen() {
                 }
             }
             return@LazyColumn
-        }
-
-        if (lib.allTracks.isNotEmpty()) {
-            item(key = "wave") { WaveSection() }
         }
 
         if (player.current != null && player.queueOwner != app.vesper.player.data.wave.WaveEngine.OWNER) {

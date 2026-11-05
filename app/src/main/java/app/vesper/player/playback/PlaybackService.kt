@@ -19,6 +19,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -63,7 +67,16 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Online tracks use floyastream:// URIs that are resolved to real stream URLs at load time.
+        val http = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+        val upstream = DefaultDataSource.Factory(this, http)
+        val appContext = applicationContext
+        val resolving = ResolvingDataSource.Factory(upstream) { spec -> StreamResolver.resolveSpec(appContext, spec) }
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(resolving))
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -210,6 +223,7 @@ class PlaybackService : MediaSessionService() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) lastMarkedId = null
+            prefetchNextOnline()
         }
 
         override fun onPositionDiscontinuity(
@@ -243,6 +257,13 @@ class PlaybackService : MediaSessionService() {
                 player.prepare()
                 player.play()
             }
+        }
+    }
+
+    private fun prefetchNextOnline() {
+        val next = player.currentMediaItemIndex + 1
+        if (next < player.mediaItemCount) {
+            player.getMediaItemAt(next).pageUrl()?.let { StreamResolver.prefetch(applicationContext, it) }
         }
     }
 
