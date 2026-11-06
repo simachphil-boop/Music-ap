@@ -104,7 +104,7 @@ fun TransferSheet(onDismiss: () -> Unit) {
         Column(Modifier.padding(horizontal = 24.dp)) {
             Text("Перенести плейлист", style = MaterialTheme.typography.headlineSmall, color = c.textPrimary)
             Text(
-                "Spotify, Яндекс Музыка, Deezer, YouTube, SoundCloud. Треки будут играть онлайн, а любой можно скачать в MP3.",
+                "Spotify, Яндекс Музыка, Deezer, YouTube, SoundCloud. Треки будут играть онлайн, а любой можно скачать к себе.",
                 style = MaterialTheme.typography.bodySmall,
                 color = c.textMuted,
             )
@@ -270,7 +270,7 @@ fun OnlinePlaylistScreen(id: Long, onBack: () -> Unit) {
                     SecondaryButton("Перемешать", onClick = { vm.player.playOnline(items.shuffled()) }, icon = Icons.Rounded.Shuffle)
                 }
                 Spacer(Modifier.height(8.dp))
-                SecondaryButton("Скачать все в MP3", onClick = { confirmDownload = true }, icon = Icons.Rounded.Download)
+                SecondaryButton("Скачать все", onClick = { confirmDownload = true }, icon = Icons.Rounded.Download)
                 Spacer(Modifier.height(10.dp))
             }
         }
@@ -291,7 +291,7 @@ fun OnlinePlaylistScreen(id: Long, onBack: () -> Unit) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                PressableIcon(Icons.Rounded.Download, "Скачать MP3", onClick = { download(listOf(item)) }, tint = c.textMuted, size = 20.dp)
+                PressableIcon(Icons.Rounded.Download, "Скачать", onClick = { download(listOf(item)) }, tint = c.textMuted, size = 20.dp)
             }
         }
     }
@@ -327,7 +327,7 @@ fun OnlinePlaylistScreen(id: Long, onBack: () -> Unit) {
     if (confirmDownload) {
         ConfirmDialog(
             title = "Скачать ${tracksCount(items.size)}?",
-            message = "Треки будут найдены и скачаны в MP3 по очереди. Это займёт время и трафик.",
+            message = "Треки будут найдены и скачаны по очереди. Это займёт время и трафик.",
             confirmLabel = "Скачать",
             onDismiss = { confirmDownload = false },
             onConfirm = {

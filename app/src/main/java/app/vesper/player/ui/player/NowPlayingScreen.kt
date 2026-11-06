@@ -288,7 +288,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     }, size = 28.dp)
                     PressableIcon(
                         androidx.compose.material.icons.Icons.Rounded.Download,
-                        "Скачать MP3",
+                        "Скачать трек",
                         onClick = { vm.downloadOnline(current) },
                         tint = c.accentBright,
                         size = 24.dp,

@@ -66,6 +66,7 @@ import app.vesper.player.data.download.LinkInfo
 import app.vesper.player.data.download.SearchResult
 import app.vesper.player.data.download.SearchSource
 import app.vesper.player.playback.OnlineItem
+import app.vesper.player.playback.StreamResolver
 import app.vesper.player.ui.LocalAppActions
 import app.vesper.player.ui.LocalBottomInset
 import app.vesper.player.ui.LocalUi
@@ -113,6 +114,11 @@ fun SearchScreen(onBack: () -> Unit) {
     var history by remember { mutableStateOf(vm.webSearch.history()) }
     var menuFor by remember { mutableStateOf<SearchResult?>(null) }
 
+    /** Resolves the first results in the background so a tap starts playback almost instantly. */
+    fun prefetchTop(list: List<SearchResult>) {
+        list.take(3).forEach { StreamResolver.prefetch(context, it.url, allowSlow = false) }
+    }
+
     fun run(q: String = query, t: Int = tab) {
         val text = q.trim()
         if (text.isEmpty()) return
@@ -126,15 +132,17 @@ fun SearchScreen(onBack: () -> Unit) {
         scope.launch {
             when (t) {
                 0 -> {
-                    val s = async { vm.webSearch.songs(text) }
+                    // Songs usually arrive much sooner than videos — show each list as soon as it is ready.
                     val v = async { vm.webSearch.videos(text) }
-                    val sr = s.await()
-                    val vr = v.await()
+                    val sr = vm.webSearch.songs(text)
                     songs = sr.getOrDefault(emptyList())
+                    prefetchTop(songs)
+                    if (songs.isNotEmpty()) loading = false
+                    val vr = v.await()
                     videos = vr.getOrDefault(emptyList())
                     if (sr.isFailure && vr.isFailure) error = vr.exceptionOrNull()?.message ?: "Поиск не удался"
                 }
-                1 -> vm.webSearch.songs(text).onSuccess { songs = it }.onFailure { error = it.message }
+                1 -> vm.webSearch.songs(text).onSuccess { songs = it; prefetchTop(it) }.onFailure { error = it.message }
                 2 -> vm.webSearch.videos(text).onSuccess { videos = it }.onFailure { error = it.message }
                 4 -> vm.webSearch.other(text, SearchSource.SOUNDCLOUD).onSuccess { others = it }.onFailure { error = it.message }
                 5 -> vm.webSearch.other(text, SearchSource.ARCHIVE).onSuccess { others = it }.onFailure { error = it.message }
@@ -303,9 +311,9 @@ fun SearchScreen(onBack: () -> Unit) {
                     vm.player.addOnline(listOf(OnlineItem(r.url, r.title, r.author.substringBefore(" · "), r.durationSec, r.thumbnail)))
                     vm.message("Добавлено в очередь")
                 },
-                SheetAction(Icons.Rounded.MusicNote, "Скачать MP3") {
+                SheetAction(Icons.Rounded.MusicNote, "Скачать трек") {
                     vm.downloader.download(LinkInfo(r.url, r.title, r.author.substringBefore(" · "), r.durationSec, r.thumbnail, "", emptyList()), DownloadKind.AUDIO, null)
-                    vm.message("Скачиваю MP3 — прогресс во вкладке «Загрузки»")
+                    vm.message("Скачиваю — прогресс во вкладке «Загрузки»")
                 },
                 SheetAction(Icons.Rounded.Download, "Скачать видео…") {
                     vm.sharedUrl.value = r.url

@@ -263,7 +263,7 @@ fun DownloadsScreen() {
                         Spacer(Modifier.height(14.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             VesperChip("Видео", kind == DownloadKind.VIDEO, onClick = { kind = DownloadKind.VIDEO })
-                            VesperChip("Только аудио (MP3)", kind == DownloadKind.AUDIO, onClick = { kind = DownloadKind.AUDIO })
+                            VesperChip("Только аудио", kind == DownloadKind.AUDIO, onClick = { kind = DownloadKind.AUDIO })
                         }
                         AnimatedVisibility(visible = kind == DownloadKind.VIDEO && i.heights.isNotEmpty()) {
                             Column {

@@ -228,6 +228,8 @@ private fun VesperNavHost(nav: NavHostController) {
             app.vesper.player.ui.screens.OnlinePlaylistScreen(entry.arguments?.getLong("id") ?: 0L, onBack = { nav.popBackStack() })
         }
         composable(Routes.SEARCH) { app.vesper.player.ui.screens.SearchScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.CHORUS_FEED) { app.vesper.player.ui.screens.ChorusFeedScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.ENERGY_CURVE) { app.vesper.player.ui.screens.EnergyCurveScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.STATS) { app.vesper.player.ui.screens.StatsScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.DOWNLOADS) { app.vesper.player.ui.screens.DownloadsScreen() }
         composable(

@@ -102,6 +102,8 @@ object Routes {
     const val STATS = "stats"
     const val SEARCH = "search"
     const val ONLINE_PLAYLIST = "online_playlist/{id}"
+    const val CHORUS_FEED = "chorus_feed"
+    const val ENERGY_CURVE = "energy_curve"
 
     fun onlinePlaylist(id: Long) = "online_playlist/$id"
 

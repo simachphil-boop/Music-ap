@@ -13,8 +13,8 @@ android {
         applicationId = "app.vesper.player"
         minSdk = 28
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.1.0"
+        versionCode = 15
+        versionName = "2.2.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -107,6 +107,8 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.database)
+    implementation(libs.androidx.media3.datasource)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

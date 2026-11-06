@@ -135,6 +135,19 @@ fun SettingsScreen() {
                 s.resumeOnConnect,
             ) { vm.setResumeOnConnect(it) }
         }
+        item {
+            var mp3 by remember { mutableStateOf(vm.downloader.audioAsMp3) }
+            ToggleRow(
+                "Скачивать музыку в MP3",
+                if (mp3) "Медленнее: каждый трек перекодируется на телефоне"
+                else "Выключено — M4A без перекодирования: быстрее и без потери качества",
+                Icons.Rounded.MusicNote,
+                mp3,
+            ) {
+                mp3 = it
+                vm.downloader.audioAsMp3 = it
+            }
+        }
 
         item {
             SettingRow(

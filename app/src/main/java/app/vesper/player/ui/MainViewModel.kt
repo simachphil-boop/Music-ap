@@ -412,7 +412,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** Saves the internet track that is playing as an MP3 in the library. */
+    /** Sound profile (energy, tempo, brightness…) of every library track — for the energy-curve builder. */
+    suspend fun soundProfiles(): Map<Long, app.vesper.player.data.wave.SoundProfile> {
+        val features = container.database.wave().allFeatures().associateBy { it.trackId }
+        return library.value.allTracks.associate { it.id to app.vesper.player.data.wave.SoundProfile.from(features[it.id], it) }
+    }
+
+    /** Saves the internet track that is playing into the library (M4A or MP3, see settings). */
     fun downloadOnline(entry: QueueEntry) {
         val page = entry.pageUrl ?: return
         downloader.download(
@@ -428,7 +434,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             DownloadKind.AUDIO,
             null,
         )
-        _messages.tryEmit("Скачиваю «${entry.title}» в MP3 — прогресс во вкладке «Загрузки»")
+        _messages.tryEmit("Скачиваю «${entry.title}» — прогресс во вкладке «Загрузки»")
     }
 
     init {

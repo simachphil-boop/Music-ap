@@ -18,7 +18,11 @@ import app.vesper.player.data.media.ProbeResult
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import app.vesper.player.playback.StreamResolver
+import app.vesper.player.playback.YouTubeFast
+import app.vesper.player.playback.YtDlpTuning
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -70,6 +74,7 @@ data class DownloadTask(
     val title: String,
     val thumbnail: String?,
     val kind: DownloadKind,
+    val artist: String = "",
     val maxHeight: Int?,
     val status: DownloadStatus = DownloadStatus.QUEUED,
     val progress: Float = 0f,
@@ -103,6 +108,11 @@ class Downloader(
 
     suspend fun prepare(): Boolean = ensureEngine()
     private val prefs = context.getSharedPreferences("floya_downloader", Context.MODE_PRIVATE)
+
+    /** false (default) = keep the original AAC/M4A — no re-encoding, several times faster. */
+    var audioAsMp3: Boolean
+        get() = prefs.getBoolean(KEY_MP3, false)
+        set(value) = prefs.edit().putBoolean(KEY_MP3, value).apply()
 
     private val _tasks = MutableStateFlow<List<DownloadTask>>(emptyList())
     val tasks: StateFlow<List<DownloadTask>> = _tasks.asStateFlow()
@@ -158,23 +168,35 @@ class Downloader(
         autoUpdateIfStale()
         return withContext(Dispatchers.IO) {
             runCatching {
-                val request = YoutubeDLRequest(url).apply {
+                val request = YoutubeDLRequest(StreamResolver.normalizePage(url)).apply {
                     addOption("--no-playlist")
+                    addOption("--dump-single-json")
+                    addOption("--skip-download")
+                    YtDlpTuning.apply(context, this, skipManifests = false)
                     addCookies(this)
                 }
-                val info = YoutubeDL.getInstance().getInfo(request)
-                val heights = info.formats.orEmpty()
-                    .filter { it.vcodec != null && it.vcodec != "none" && it.height > 0 }
-                    .map { it.height }
-                    .distinct()
-                    .sortedDescending()
+                val out = YoutubeDL.getInstance().execute(request).out
+                val json = out.substring(out.indexOf('{').coerceAtLeast(0))
+                val info = org.json.JSONObject(json)
+                // The download reuses this instead of asking the site a second time.
+                runCatching { infoFile(url).apply { parentFile?.mkdirs() }.writeText(json) }
+                val formats = info.optJSONArray("formats")
+                val heights = buildList {
+                    if (formats != null) for (i in 0 until formats.length()) {
+                        val f = formats.optJSONObject(i) ?: continue
+                        val vcodec = f.optString("vcodec", "none")
+                        val h = f.optInt("height", 0)
+                        if (vcodec != "none" && vcodec != "null" && h > 0) add(h)
+                    }
+                }.distinct().sortedDescending()
+                fun str(key: String) = info.optString(key).takeIf { it.isNotBlank() && it != "null" }
                 LinkInfo(
                     url = url,
-                    title = info.title?.takeIf { it.isNotBlank() } ?: "Без названия",
-                    uploader = info.uploader.orEmpty(),
-                    durationSec = info.duration,
-                    thumbnail = info.thumbnail,
-                    source = info.extractorKey.orEmpty(),
+                    title = str("title") ?: "Без названия",
+                    uploader = str("artist") ?: str("uploader") ?: str("channel") ?: "",
+                    durationSec = info.optDouble("duration", 0.0).let { if (it.isNaN()) 0 else it.toInt() },
+                    thumbnail = str("thumbnail"),
+                    source = str("extractor_key") ?: "",
                     heights = heights,
                 )
             }.recoverCatching { e -> throw describe(e) }
@@ -196,7 +218,7 @@ class Downloader(
                         val request = YoutubeDLRequest("$prefix:$q").apply {
                             addOption("--flat-playlist")
                             addOption("--dump-single-json")
-                            addOption("--no-warnings")
+                            YtDlpTuning.apply(context, this, skipManifests = true)
                             addCookies(this)
                         }
                         val out = YoutubeDL.getInstance().execute(request).out
@@ -285,6 +307,7 @@ class Downloader(
             title = info.title,
             thumbnail = info.thumbnail,
             kind = kind,
+            artist = info.uploader,
             maxHeight = maxHeight,
             edit = edit?.takeIf { !it.isNoop },
         )
@@ -317,9 +340,21 @@ class Downloader(
         try {
             if (!ensureEngine()) error("Не удалось запустить движок загрузки (${FfmpegTool.lastError})")
             updateTask(task.id) { it.copy(status = DownloadStatus.DOWNLOADING) }
-            val request = YoutubeDLRequest(task.url).apply {
+            val fast = runCatching { fastYouTubeAudio(task, workDir) }.getOrNull()
+            if (fast != null) {
+                finish(task, fast)
+                return@withContext
+            }
+            if (isCanceled(task.id)) return@withContext
+            workDir.listFiles()?.forEach { it.deleteRecursively() }
+            val info = infoFile(task.url).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < INFO_TTL_MS }
+            val request = YoutubeDLRequest(StreamResolver.normalizePage(task.url)).apply {
                 addOption("--no-playlist")
                 addOption("--no-mtime")
+                // Already looked the link up when the user opened it — skip the second lookup.
+                if (info != null) addOption("--load-info-json", info.absolutePath)
+                addOption("--concurrent-fragments", "4")
+                YtDlpTuning.apply(context, this, skipManifests = task.kind == DownloadKind.AUDIO)
                 addCookies(this)
                 task.edit?.takeIf { it.trims }?.let { e ->
                     // Fetch only the chosen fragment — saves traffic and time.
@@ -328,10 +363,16 @@ class Downloader(
                 }
                 addOption("-o", workDir.absolutePath + "/%(title).120B.%(ext)s")
                 if (task.kind == DownloadKind.AUDIO) {
-                    addOption("-f", "bestaudio/best")
                     addOption("-x")
-                    addOption("--audio-format", "mp3")
-                    addOption("--audio-quality", "0")
+                    if (audioAsMp3) {
+                        addOption("-f", "bestaudio/best")
+                        addOption("--audio-format", "mp3")
+                        addOption("--audio-quality", "0")
+                    } else {
+                        // Take a format that can be saved as is: AAC → .m4a, MP3 → .mp3, no re-encoding.
+                        addOption("-f", "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]/bestaudio/best")
+                        addOption("--audio-format", "best")
+                    }
                     addOption("--embed-metadata")
                     addOption("--embed-thumbnail")
                     addOption("--convert-thumbnails", "jpg")
@@ -386,13 +427,7 @@ class Downloader(
                 file = File(workDir, file.nameWithoutExtension.take(100) + ".mp4").also { cropped.renameTo(it) }
             }
 
-            val uri = MediaPublisher.publish(context, file, task.kind == DownloadKind.AUDIO)
-            val mediaId = when (val r = library.importSingle(uri)) {
-                is ProbeResult.Audio -> r.track.id.also { library.markDownloaded(it) }
-                is ProbeResult.Video -> r.video.id
-                is ProbeResult.Unsupported -> null
-            }
-            updateTask(task.id) { it.copy(status = DownloadStatus.DONE, progress = 1f, mediaId = mediaId) }
+            finish(task, file)
         } catch (e: YoutubeDL.CanceledException) {
             updateTask(task.id) { it.copy(status = DownloadStatus.CANCELED) }
         } catch (e: Exception) {
@@ -406,8 +441,105 @@ class Downloader(
         }
     }
 
+    private suspend fun finish(task: DownloadTask, file: File) {
+        val uri = MediaPublisher.publish(context, file, task.kind == DownloadKind.AUDIO)
+        val mediaId = when (val r = library.importSingle(uri)) {
+            is ProbeResult.Audio -> r.track.id.also { library.markDownloaded(it) }
+            is ProbeResult.Video -> r.video.id
+            is ProbeResult.Unsupported -> null
+        }
+        updateTask(task.id) { it.copy(status = DownloadStatus.DONE, progress = 1f, mediaId = mediaId) }
+    }
+
+    private fun isCanceled(id: String) = _tasks.value.firstOrNull { it.id == id }?.status == DownloadStatus.CANCELED
+
+    private fun infoFile(url: String): File =
+        File(context.cacheDir, "link-info/" + Integer.toHexString(url.hashCode()) + "_" + url.length + ".json")
+
+    /**
+     * YouTube audio without yt-dlp: a direct link from [StreamResolver] (often already known because the
+     * track is playing), downloaded in 4 parallel parts, then FFmpeg only packs cover and tags — no re-encoding.
+     * Returns null to let the regular yt-dlp path take over.
+     */
+    private suspend fun fastYouTubeAudio(task: DownloadTask, workDir: File): File? = coroutineScope {
+        if (task.kind != DownloadKind.AUDIO || task.edit != null) return@coroutineScope null
+        val id = YouTubeFast.videoId(task.url) ?: return@coroutineScope null
+        val stream = StreamResolver.fastAudio(context, task.url) ?: return@coroutineScope null
+        val raw = File(workDir, "source.${stream.ext}")
+        if (!ParallelHttp.download(stream.url, stream.headers, stream.contentLength, raw, { isCanceled(task.id) }) { done, total, bytesPerSec ->
+                updateTask(task.id) {
+                    if (it.status == DownloadStatus.CANCELED) it
+                    else it.copy(
+                        status = DownloadStatus.DOWNLOADING,
+                        progress = (done.toFloat() / total).coerceIn(0f, 1f),
+                        etaSec = if (bytesPerSec > 0) (total - done) / bytesPerSec else 0,
+                    )
+                }
+            }
+        ) return@coroutineScope null
+        updateTask(task.id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f) }
+
+        val cover = fetchCover(id, task.thumbnail, workDir)
+        val title = task.title.ifBlank { stream.title }
+        val artist = task.artist.ifBlank { stream.author }.removeSuffix(" - Topic")
+        val mp3 = audioAsMp3
+        val needsEncode = mp3 || stream.ext != "m4a"
+        val outName = MediaEditor.safeName(if (artist.isNotBlank() && !title.contains(artist, true)) "$artist - $title" else title)
+        val out = File(workDir, outName + if (mp3) ".mp3" else ".m4a")
+        val args = buildList {
+            add("-y"); add("-i"); add(raw.absolutePath)
+            if (cover != null) { add("-i"); add(cover.absolutePath) }
+            add("-map"); add("0:a")
+            if (cover != null) { add("-map"); add("1:v") }
+            when {
+                mp3 -> { add("-c:a"); add("libmp3lame"); add("-q:a"); add("0"); add("-id3v2_version"); add("3") }
+                needsEncode -> { add("-c:a"); add("aac"); add("-b:a"); add("192k") }
+                else -> { add("-c:a"); add("copy") }
+            }
+            if (cover != null) { add("-c:v"); add(if (mp3) "mjpeg" else "copy"); add("-disposition:v:0"); add("attached_pic") }
+            add("-metadata"); add("title=$title")
+            if (artist.isNotBlank()) { add("-metadata"); add("artist=$artist") }
+            if (!mp3) { add("-movflags"); add("+faststart") }
+            add(out.absolutePath)
+        }
+        val durationMs = stream.durationSec * 1000L
+        var (code, _) = FfmpegTool.run(context, args, durationMs) {}
+        if (code != 0 && cover != null) {
+            // Some covers can't be embedded — keep the music anyway.
+            val noCover = args.toMutableList().apply {
+                val i = indexOf(cover.absolutePath); removeAt(i); removeAt(i - 1)
+                val m = indexOf("1:v"); removeAt(m); removeAt(m - 1)
+                val c = indexOf("-c:v"); removeAt(c + 1); removeAt(c)
+                val d = indexOf("-disposition:v:0"); removeAt(d + 1); removeAt(d)
+            }
+            code = FfmpegTool.run(context, noCover, durationMs) {}.first
+        }
+        if (code != 0 || !out.isFile || out.length() == 0L) return@coroutineScope null
+        raw.delete()
+        out
+    }
+
+    /** Square cover: YouTube Music art in high resolution, or the video frame cropped to a square. */
+    private suspend fun fetchCover(videoId: String, thumbnail: String?, workDir: File): File? {
+        val candidates = buildList {
+            if (thumbnail != null && thumbnail.contains("googleusercontent")) {
+                add(thumbnail.replace(Regex("=w\\d+-h\\d+.*$"), "=w600-h600-l90-rj"))
+            }
+            add("https://i.ytimg.com/vi/$videoId/maxresdefault.jpg")
+            add("https://i.ytimg.com/vi/$videoId/mqdefault.jpg")
+        }
+        val raw = File(workDir, "cover_src.jpg")
+        val ok = candidates.firstOrNull { url -> ParallelHttp.fetchSmall(url, raw) } ?: return null
+        val square = File(workDir, "cover.jpg")
+        val crop = if (ok.contains("i.ytimg.com")) listOf("-vf", "crop='min(iw,ih)':'min(iw,ih)'") else emptyList()
+        val code = FfmpegTool.run(context, listOf("-y", "-i", raw.absolutePath) + crop + listOf("-q:v", "2", square.absolutePath), 0) {}.first
+        return if (code == 0 && square.isFile && square.length() > 0) square else raw
+    }
+
     companion object {
         private const val KEY_LAST_UPDATE = "last_engine_update"
+        private const val KEY_MP3 = "audio_as_mp3"
+        private const val INFO_TTL_MS = 30L * 60 * 1000
         private val urlRegex = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
 
         /** Pulls the first link out of shared text like "Смотри: https://youtu.be/…". */

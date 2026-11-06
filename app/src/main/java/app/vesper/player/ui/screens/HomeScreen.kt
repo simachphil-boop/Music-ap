@@ -29,6 +29,8 @@ import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.ShowChart
+import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -105,6 +107,29 @@ fun HomeScreen() {
             }
         }
         item(key = "wave") { WaveSection() }
+        if (lib.allTracks.isNotEmpty()) {
+            item(key = "discover") {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    DiscoverCard(
+                        icon = Icons.Rounded.Whatshot,
+                        title = "Лента припевов",
+                        subtitle = "Листай свою музыку по самым ярким моментам",
+                        modifier = Modifier.weight(1f),
+                        onClick = { ui.open(Routes.CHORUS_FEED) },
+                    )
+                    DiscoverCard(
+                        icon = Icons.Rounded.ShowChart,
+                        title = "Кривая энергии",
+                        subtitle = "Нарисуй настроение — плейлист пойдёт по линии",
+                        modifier = Modifier.weight(1f),
+                        onClick = { ui.open(Routes.ENERGY_CURVE) },
+                    )
+                }
+            }
+        }
 
         if (libraryEmpty) {
             item(key = "empty") {
@@ -380,5 +405,23 @@ private fun QuickAction(icon: ImageVector, label: String, modifier: Modifier = M
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun DiscoverCard(icon: ImageVector, title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val c = Vesper.colors
+    Column(
+        modifier
+            .clip(Vesper.shapes.medium)
+            .background(c.surfaceHigh)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+    ) {
+        Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(10.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(2.dp))
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }

@@ -117,8 +117,13 @@ class PlaybackService : MediaSessionService() {
         val upstream = DefaultDataSource.Factory(this, http)
         val appContext = applicationContext
         val resolving = ResolvingDataSource.Factory(upstream) { spec -> StreamResolver.resolveSpec(appContext, spec) }
+        // Start sound after 1 s of buffered audio instead of the default 2.5 s — internet tracks begin sooner.
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15_000, 50_000, 1_000, 2_000)
+            .build()
         player = ExoPlayer.Builder(this, StudioRenderersFactory(this, container.studio.processor))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(resolving))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(StreamCache.factory(appContext, resolving)))
+            .setLoadControl(loadControl)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -370,6 +375,10 @@ class PlaybackService : MediaSessionService() {
         val next = player.currentMediaItemIndex + 1
         if (next < player.mediaItemCount) {
             player.getMediaItemAt(next).pageUrl()?.let { StreamResolver.prefetch(applicationContext, it) }
+        }
+        // The one after that only if it is cheap (YouTube fast path) — skipping twice stays instant too.
+        if (next + 1 < player.mediaItemCount) {
+            player.getMediaItemAt(next + 1).pageUrl()?.let { StreamResolver.prefetch(applicationContext, it, allowSlow = false) }
         }
     }
 
