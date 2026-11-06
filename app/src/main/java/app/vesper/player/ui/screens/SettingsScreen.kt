@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.HeadsetOff
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Insights
@@ -98,6 +99,14 @@ fun SettingsScreen() {
                 Icons.Rounded.Image,
                 s.artworkTint,
             ) { vm.setArtworkTint(it) }
+        }
+        item {
+            ToggleRow(
+                "Живой фон",
+                "Анимации темы: угольки и летучие мыши, звёзды, неоновый дождь, лепестки, светлячки",
+                Icons.Rounded.AutoAwesome,
+                s.ambience,
+            ) { vm.setAmbience(it) }
         }
 
         item { Group("Воспроизведение") }

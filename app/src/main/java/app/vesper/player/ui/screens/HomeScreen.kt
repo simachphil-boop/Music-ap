@@ -51,7 +51,10 @@ import app.vesper.player.ui.LocalBottomInset
 import app.vesper.player.ui.LocalUi
 import app.vesper.player.ui.LocalViewModel
 import app.vesper.player.ui.Routes
+import app.vesper.player.ui.components.Appear
 import app.vesper.player.ui.components.ArtSize
+import app.vesper.player.ui.components.bouncyClick
+import app.vesper.player.ui.components.themedShine
 import app.vesper.player.ui.components.Artwork
 import app.vesper.player.ui.components.EmptyState
 import app.vesper.player.ui.components.MediaTile
@@ -87,9 +90,10 @@ fun HomeScreen() {
     val libraryEmpty = lib.loaded && vids.loaded && lib.allTracks.isEmpty() && vids.all.isEmpty()
     val hasPermission = vm.hasAudioPermission() || vm.hasVideoPermission()
 
+    val seen = remember { mutableSetOf<String>() }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
-        item(key = "header") { HomeHeader(lib.allTracks.size, vids.all.size) }
-        item(key = "search") {
+        item(key = "header") { Appear(seen, "header", 0) { HomeHeader(lib.allTracks.size, vids.all.size) }}
+        item(key = "search") { Appear(seen, "search", 1) {
             Row(
                 Modifier
                     .padding(horizontal = 20.dp)
@@ -105,10 +109,10 @@ fun HomeScreen() {
                 Spacer(Modifier.width(12.dp))
                 Text("Найти песню, исполнителя или видео", style = MaterialTheme.typography.bodyLarge, color = c.textMuted)
             }
-        }
-        item(key = "wave") { WaveSection() }
+        }}
+        item(key = "wave") { Appear(seen, "wave", 2) { WaveSection() }}
         if (lib.allTracks.isNotEmpty()) {
-            item(key = "discover") {
+            item(key = "discover") { Appear(seen, "discover", 3) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -128,11 +132,11 @@ fun HomeScreen() {
                         onClick = { ui.open(Routes.ENERGY_CURVE) },
                     )
                 }
-            }
+            }}
         }
 
         if (libraryEmpty) {
-            item(key = "empty") {
+            item(key = "empty") { Appear(seen, "empty", 4) {
                 if (scanning) {
                     EmptyState(
                         icon = Icons.Rounded.LibraryMusic,
@@ -160,15 +164,15 @@ fun HomeScreen() {
                         onSecondary = actions.importFolder,
                     )
                 }
-            }
+            }}
             return@LazyColumn
         }
 
         if (player.current != null && player.queueOwner != app.vesper.player.data.wave.WaveEngine.OWNER) {
-            item(key = "now") { NowPlayingCard(onOpen = { ui.playerExpanded = true }) }
+            item(key = "now") { Appear(seen, "now", 5) { NowPlayingCard(onOpen = { ui.playerExpanded = true }) }}
         }
 
-        item(key = "quick") {
+        item(key = "quick") { Appear(seen, "quick", 6) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -182,11 +186,11 @@ fun HomeScreen() {
                 }
                 QuickAction(Icons.Rounded.Download, "По ссылке", Modifier.weight(1f)) { ui.goToTab(Routes.DOWNLOADS) }
             }
-        }
+        }}
 
         if (lib.recentlyPlayed.isNotEmpty()) {
-            item(key = "recentHeader") { SectionHeader("Недавно прослушанные", actionLabel = "Все", onAction = { ui.musicTab = 6; ui.goToTab(Routes.MUSIC) }) }
-            item(key = "recent") {
+            item(key = "recentHeader") { Appear(seen, "recentHeader", 7) { SectionHeader("Недавно прослушанные", actionLabel = "Все", onAction = { ui.musicTab = 6; ui.goToTab(Routes.MUSIC) }) }}
+            item(key = "recent") { Appear(seen, "recent", 8) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(lib.recentlyPlayed.take(15), key = { it.id }) { t ->
                         MediaTile(
@@ -202,12 +206,12 @@ fun HomeScreen() {
                         )
                     }
                 }
-            }
+            }}
         }
 
         if (lib.favorites.isNotEmpty()) {
-            item(key = "favHeader") { SectionHeader("Любимое") }
-            item(key = "fav") {
+            item(key = "favHeader") { Appear(seen, "favHeader", 9) { SectionHeader("Любимое") }}
+            item(key = "fav") { Appear(seen, "fav", 10) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(lib.favorites.take(20), key = { it.id }) { t ->
                         MediaTile(
@@ -220,12 +224,12 @@ fun HomeScreen() {
                         )
                     }
                 }
-            }
+            }}
         }
 
         if (playlists.isNotEmpty()) {
-            item(key = "plHeader") { SectionHeader("Плейлисты", actionLabel = "Все", onAction = { ui.goToTab(Routes.PLAYLISTS) }) }
-            item(key = "pl") {
+            item(key = "plHeader") { Appear(seen, "plHeader", 11) { SectionHeader("Плейлисты", actionLabel = "Все", onAction = { ui.goToTab(Routes.PLAYLISTS) }) }}
+            item(key = "pl") { Appear(seen, "pl", 12) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(playlists.take(12), key = { it.id }) { p ->
                         Column(
@@ -242,12 +246,12 @@ fun HomeScreen() {
                         }
                     }
                 }
-            }
+            }}
         }
 
         if (vids.recent.isNotEmpty()) {
-            item(key = "vidHeader") { SectionHeader("Продолжить просмотр", actionLabel = "Видео", onAction = { ui.videoTab = 1; ui.goToTab(Routes.VIDEOS) }) }
-            item(key = "vid") {
+            item(key = "vidHeader") { Appear(seen, "vidHeader", 13) { SectionHeader("Продолжить просмотр", actionLabel = "Видео", onAction = { ui.videoTab = 1; ui.goToTab(Routes.VIDEOS) }) }}
+            item(key = "vid") { Appear(seen, "vid", 14) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(vids.recent.take(12), key = { it.id }) { v ->
                         Column(
@@ -267,22 +271,22 @@ fun HomeScreen() {
                         }
                     }
                 }
-            }
+            }}
         }
 
         if (lib.albums.size > 1) {
-            item(key = "albHeader") { SectionHeader("Альбомы") }
-            item(key = "alb") {
+            item(key = "albHeader") { Appear(seen, "albHeader", 15) { SectionHeader("Альбомы") }}
+            item(key = "alb") { Appear(seen, "alb", 16) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(lib.albums.take(16), key = { it.key }) { a ->
                         MediaTile(a.title, a.subtitle, a.artUri, onClick = { ui.openGroup(GroupType.ALBUM, a.key) })
                     }
                 }
-            }
+            }}
         }
 
         if (lib.recentlyAdded.isNotEmpty()) {
-            item(key = "addedHeader") { SectionHeader("Недавно добавленные", actionLabel = "Все", onAction = { ui.musicTab = 5; ui.goToTab(Routes.MUSIC) }) }
+            item(key = "addedHeader") { Appear(seen, "addedHeader", 17) { SectionHeader("Недавно добавленные", actionLabel = "Все", onAction = { ui.musicTab = 5; ui.goToTab(Routes.MUSIC) }) }}
             val added = lib.recentlyAdded.take(6)
             items(added, key = { "added-${it.id}" }) { t ->
                 TrackRow(
@@ -322,6 +326,7 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
                 text = if (ornament == Ornament.NEON) "FLOYA" else "Floya",
                 style = MaterialTheme.typography.displayMedium,
                 color = c.textPrimary,
+                modifier = Modifier.themedShine(),
             )
             Spacer(Modifier.width(8.dp))
             Text(
@@ -413,9 +418,9 @@ private fun DiscoverCard(icon: ImageVector, title: String, subtitle: String, mod
     val c = Vesper.colors
     Column(
         modifier
+            .bouncyClick(onClick)
             .clip(Vesper.shapes.medium)
             .background(c.surfaceHigh)
-            .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
         Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(22.dp))

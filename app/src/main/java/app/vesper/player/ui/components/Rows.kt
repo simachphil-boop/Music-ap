@@ -218,8 +218,8 @@ fun MediaTile(
     Column(
         modifier
             .width(width)
+            .bouncyClick(onClick, onLongClick)
             .clip(Vesper.shapes.small)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(bottom = 4.dp),
     ) {
         Box {
@@ -304,7 +304,7 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(84.dp).clip(Vesper.shapes.large).background(c.surfaceHigh),
+            Modifier.floating().size(84.dp).clip(Vesper.shapes.large).background(c.surfaceHigh),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(36.dp))

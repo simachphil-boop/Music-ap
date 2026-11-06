@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.vesper.player.appContainer
+import app.vesper.player.playback.AudioEffects
 import app.vesper.player.data.LibraryRepository
 import app.vesper.player.data.db.PlaylistEntity
 import app.vesper.player.data.db.PlaylistItemEntity
@@ -390,6 +391,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun setBassBoost(v: Int) = viewModelScope.launch { settingsRepo.setBassBoost(v) }
     fun setVirtualizer(v: Int) = viewModelScope.launch { settingsRepo.setVirtualizer(v) }
+
+    /** Applied to the sound immediately (no waiting for the settings write) and then saved. */
+    fun setVolumeBoost(millibels: Int, persist: Boolean = true) {
+        val v = millibels.coerceIn(0, AudioEffects.MAX_BOOST_MB)
+        audioEffects.setBoost(v)
+        if (persist) viewModelScope.launch { settingsRepo.setVolumeBoost(v) }
+    }
+
+    fun setAmbience(v: Boolean) = viewModelScope.launch { settingsRepo.setAmbience(v) }
 
     fun message(text: String) {
         _messages.tryEmit(text)

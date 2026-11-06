@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -96,6 +97,7 @@ fun VesperRoot(vm: MainViewModel, actions: AppActions, openPlayerSignal: Int) {
     val c = Vesper.colors
     val playerState by vm.player.state.collectAsStateWithLifecycle()
     val hasQueue = playerState.queue.isNotEmpty()
+    val appSettings by vm.settings.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
     val shared by vm.sharedUrl.collectAsStateWithLifecycle()
@@ -133,6 +135,9 @@ fun VesperRoot(vm: MainViewModel, actions: AppActions, openPlayerSignal: Int) {
         LocalBottomInset provides bottomInset,
     ) {
         Box(Modifier.fillMaxSize().background(c.background)) {
+            if (appSettings.ambience) {
+                app.vesper.player.ui.theme.ThemeAmbience(Modifier.fillMaxSize(), playing = playerState.isPlaying, intensity = 0.8f)
+            }
             VesperNavHost(nav)
 
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
@@ -266,7 +271,7 @@ private fun BottomNavBar(nav: NavHostController) {
     Column(
         Modifier
             .fillMaxWidth()
-            .background(c.background)
+            .background(c.background.copy(alpha = 0.94f))
             .navigationBarsPadding(),
     ) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.outline.copy(alpha = 0.6f)))
@@ -279,6 +284,12 @@ private fun BottomNavBar(nav: NavHostController) {
                 val active = tab.route == tabRoute
                 val tint by animateColorAsState(if (active) c.accentBright else c.textMuted, tween(240), label = "tabTint")
                 val indicator by animateDpAsState(if (active) 18.dp else 0.dp, spring(stiffness = 600f), label = "tabInd")
+                // The chosen tab's icon pops up with a little spring.
+                val pop by androidx.compose.animation.core.animateFloatAsState(
+                    if (active) 1.14f else 1f,
+                    spring(dampingRatio = 0.38f, stiffness = 420f),
+                    label = "tabPop",
+                )
                 Column(
                     Modifier
                         .weight(1f)
@@ -294,7 +305,14 @@ private fun BottomNavBar(nav: NavHostController) {
                 ) {
                     Box(Modifier.height(3.dp).width(indicator).clip(Vesper.shapes.chip).background(c.accentBright))
                     Spacer(Modifier.height(7.dp))
-                    Icon(tab.icon, tab.label, tint = tint, modifier = Modifier.size(24.dp))
+                    Icon(
+                        tab.icon, tab.label, tint = tint,
+                        modifier = Modifier.size(24.dp).graphicsLayer {
+                            scaleX = pop
+                            scaleY = pop
+                            translationY = (1f - pop) * 10f
+                        },
+                    )
                     Spacer(Modifier.height(3.dp))
                     Text(
                         tab.label,

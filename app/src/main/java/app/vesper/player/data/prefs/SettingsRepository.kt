@@ -37,6 +37,8 @@ data class EqualizerSettings(
     val bandLevels: List<Int> = emptyList(),
     val bassBoost: Int = 0,
     val virtualizer: Int = 0,
+    /** Extra loudness on top of the system volume, in millibels (0 = off, 1500 = +15 dB). Works even with the EQ off. */
+    val volumeBoost: Int = 0,
 )
 
 data class AppSettings(
@@ -53,6 +55,8 @@ data class AppSettings(
     val equalizer: EqualizerSettings = EqualizerSettings(),
     val onboardingDone: Boolean = false,
     val videoSpeed: Float = 1f,
+    /** Animated themed background (embers and bats, stars, petals…). */
+    val ambience: Boolean = true,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -73,6 +77,8 @@ class SettingsRepository(private val context: Context) {
         val eqBands = stringPreferencesKey("eq_bands")
         val bassBoost = intPreferencesKey("bass_boost")
         val virtualizer = intPreferencesKey("virtualizer")
+        val volumeBoost = intPreferencesKey("volume_boost")
+        val ambience = booleanPreferencesKey("ambience")
         val onboarding = booleanPreferencesKey("onboarding_done")
         val videoSpeed = stringPreferencesKey("video_speed")
         val queueIndex = intPreferencesKey("queue_index")
@@ -98,7 +104,9 @@ class SettingsRepository(private val context: Context) {
                 bandLevels = p[Keys.eqBands]?.split(",")?.mapNotNull { it.trim().toIntOrNull() } ?: emptyList(),
                 bassBoost = p[Keys.bassBoost] ?: 0,
                 virtualizer = p[Keys.virtualizer] ?: 0,
+                volumeBoost = p[Keys.volumeBoost] ?: 0,
             ),
+            ambience = p[Keys.ambience] ?: true,
             onboardingDone = p[Keys.onboarding] ?: false,
             videoSpeed = p[Keys.videoSpeed]?.toFloatOrNull() ?: 1f,
         )
@@ -126,6 +134,8 @@ class SettingsRepository(private val context: Context) {
     }
     suspend fun setBassBoost(v: Int) = context.dataStore.edit { it[Keys.bassBoost] = v }
     suspend fun setVirtualizer(v: Int) = context.dataStore.edit { it[Keys.virtualizer] = v }
+    suspend fun setVolumeBoost(v: Int) = context.dataStore.edit { it[Keys.volumeBoost] = v }
+    suspend fun setAmbience(v: Boolean) = context.dataStore.edit { it[Keys.ambience] = v }
 
     // --- Queue position (written frequently by the playback service) ---
     suspend fun saveQueuePosition(index: Int, positionMs: Long) = context.dataStore.edit {

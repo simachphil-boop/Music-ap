@@ -148,6 +148,7 @@ fun ChorusFeedScreen(onBack: () -> Unit) {
     LaunchedEffect(paused) { if (paused) snippet.pause() else if (snippet.playbackState != androidx.media3.common.Player.STATE_IDLE) snippet.play() }
 
     Box(Modifier.fillMaxSize().background(c.background)) {
+        app.vesper.player.ui.theme.ThemeAmbience(Modifier.fillMaxSize(), playing = !paused)
         VerticalPager(state = pager, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1, key = { feed[it].id }) { page ->
             val track = lib.trackById[feed[page].id] ?: feed[page]
             ChorusPage(
@@ -192,7 +193,7 @@ private fun ChorusPage(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(c.highlight, c.background, c.background)))
+            .background(Brush.verticalGradient(listOf(c.highlight.copy(alpha = 0.85f), Color.Transparent, Color.Transparent)))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTogglePause),
     ) {
         Column(

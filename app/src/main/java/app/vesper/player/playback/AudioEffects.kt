@@ -2,6 +2,7 @@ package app.vesper.player.playback
 
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import android.util.Log
 import app.vesper.player.data.prefs.EqualizerSettings
@@ -27,6 +28,7 @@ class AudioEffects {
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
+    private var enhancer: LoudnessEnhancer? = null
     private var sessionId: Int = 0
     private var lastSettings: EqualizerSettings = EqualizerSettings()
 
@@ -38,6 +40,9 @@ class AudioEffects {
         if (audioSessionId == 0 || audioSessionId == sessionId) return
         release()
         sessionId = audioSessionId
+        // Loudness boost is independent of the equalizer, so it is created even if the EQ isn't available.
+        enhancer = runCatching { LoudnessEnhancer(audioSessionId) }.getOrNull()
+        applyBoost(lastSettings.volumeBoost)
         try {
             val eq = Equalizer(0, audioSessionId)
             equalizer = eq
@@ -58,7 +63,12 @@ class AudioEffects {
             apply(lastSettings)
         } catch (e: Throwable) {
             Log.w("AudioEffects", "Equalizer unavailable", e)
-            release()
+            runCatching { equalizer?.release() }
+            runCatching { bassBoost?.release() }
+            runCatching { virtualizer?.release() }
+            equalizer = null
+            bassBoost = null
+            virtualizer = null
             _info.value = null
         }
     }
@@ -76,9 +86,26 @@ class AudioEffects {
         }.getOrNull()
     }
 
+    /** Instant boost change while the user drags the slider. */
+    @Synchronized
+    fun setBoost(millibels: Int) {
+        lastSettings = lastSettings.copy(volumeBoost = millibels)
+        applyBoost(millibels)
+    }
+
+    private fun applyBoost(millibels: Int) {
+        val e = enhancer ?: return
+        runCatching {
+            val gain = millibels.coerceIn(0, MAX_BOOST_MB)
+            e.setTargetGain(gain)
+            e.setEnabled(gain > 0)
+        }
+    }
+
     @Synchronized
     fun apply(settings: EqualizerSettings) {
         lastSettings = settings
+        applyBoost(settings.volumeBoost)
         val eq = equalizer ?: return
         runCatching {
             eq.setEnabled(settings.enabled)
@@ -109,9 +136,16 @@ class AudioEffects {
         runCatching { equalizer?.release() }
         runCatching { bassBoost?.release() }
         runCatching { virtualizer?.release() }
+        runCatching { enhancer?.release() }
         equalizer = null
         bassBoost = null
         virtualizer = null
+        enhancer = null
         sessionId = 0
+    }
+
+    companion object {
+        /** +15 dB ≈ 2.8× as loud by ear. More than that mostly adds distortion. */
+        const val MAX_BOOST_MB = 1500
     }
 }

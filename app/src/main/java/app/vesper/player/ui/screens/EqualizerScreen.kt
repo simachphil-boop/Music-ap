@@ -73,6 +73,13 @@ fun EqualizerScreen(onBack: () -> Unit) {
             OrnamentDivider(Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
         }
 
+        item {
+            EffectSlider(
+                "Усиление громкости — работает и без эквалайзера",
+                eq.volumeBoost * 1000 / app.vesper.player.playback.AudioEffects.MAX_BOOST_MB,
+            ) { vm.setVolumeBoost(it * app.vesper.player.playback.AudioEffects.MAX_BOOST_MB / 1000) }
+        }
+
         val i = info
         if (i == null) {
             item {

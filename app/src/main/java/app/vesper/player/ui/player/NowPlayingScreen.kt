@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -69,6 +70,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -192,6 +194,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                 )
             },
     ) {
+        if (settings.ambience) {
+            app.vesper.player.ui.theme.ThemeAmbience(Modifier.fillMaxSize(), playing = state.isPlaying, intensity = 1.2f)
+        }
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -234,6 +239,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
                     onSwipeNext = { vm.player.next() },
                     onSwipePrevious = { vm.player.previous() },
                     ornament = theme.ornament,
+                    playing = state.isPlaying,
                 )
             }
 
@@ -348,7 +354,7 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
             }
 
             Spacer(Modifier.height(10.dp))
-            VolumeRow()
+            VolumeRow(settings.equalizer.volumeBoost) { mb, persist -> vm.setVolumeBoost(mb, persist) }
 
             // Secondary actions
             Row(
@@ -406,6 +412,7 @@ private fun ArtworkStage(
     onSwipeNext: () -> Unit,
     onSwipePrevious: () -> Unit,
     ornament: Ornament,
+    playing: Boolean = false,
 ) {
     val c = Vesper.colors
     val shape = Vesper.shapes.artwork
@@ -428,9 +435,15 @@ private fun ArtworkStage(
         else -> Modifier.shadow(22.dp, shape)
     }
 
+    val motion = rememberFrameMotion(playing)
+    // The cover gently "breathes" while music plays.
+    val breathe = animateFloatAsState(if (playing) 1f else 0f, tween(800), label = "breathe")
     Box(
         modifier
             .graphicsLayer {
+                val b = 1f + 0.012f * breathe.value * kotlin.math.sin(motion.phase * 2f * Math.PI.toFloat() * 3f)
+                scaleX = b
+                scaleY = b
                 translationX = swipeAnim.value
                 rotationZ = swipeAnim.value / 90f
                 alpha = 1f - (kotlin.math.abs(swipeAnim.value) / (size.width * 1.4f)).coerceIn(0f, 0.6f)
@@ -455,6 +468,7 @@ private fun ArtworkStage(
                 )
             },
     ) {
+        FrameGlow(ornament, motion, Modifier.matchParentSize().graphicsLayer { scaleX = 1.35f; scaleY = 1.35f })
         AnimatedContent(
             targetState = Triple(entryKey, uri, title),
             contentKey = { it.first },
@@ -470,6 +484,7 @@ private fun ArtworkStage(
                 Artwork(u, t, Modifier.fillMaxSize().aspectRatio(1f), size = ArtSize.Large, shape = shape)
             }
         }
+        FrameOverlay(ornament, motion, Modifier.matchParentSize())
     }
 }
 
@@ -515,22 +530,66 @@ private fun SleepButton(active: Boolean, endOfTrack: Boolean, endsAt: Long, onCl
     }
 }
 
+/**
+ * One slider for everything: the left half is the phone's own volume, the right half (past the tick)
+ * is Floya's extra loudness on top of the maximum — for quiet tracks and weak headphones.
+ */
 @Composable
-private fun VolumeRow() {
+private fun VolumeRow(boostMb: Int, onBoost: (Int, Boolean) -> Unit) {
     val c = Vesper.colors
     val (volume, setVolume) = rememberSystemVolume()
-    Row(Modifier.fillMaxWidth().widthIn(max = 520.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.VolumeDown, null, tint = c.textMuted, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        VesperSlider(
-            value = volume,
-            onValueChange = setVolume,
-            modifier = Modifier.weight(1f),
-            trackHeight = 2.dp,
-            activeColor = c.textSecondary,
-        )
-        Spacer(Modifier.width(8.dp))
-        Icon(Icons.Rounded.VolumeUp, null, tint = c.textMuted, modifier = Modifier.size(20.dp))
+    val maxBoost = app.vesper.player.playback.AudioEffects.MAX_BOOST_MB
+    var boost by remember { mutableIntStateOf(boostMb) }
+    LaunchedEffect(boostMb) { boost = boostMb }
+    // Turning the phone volume down with the buttons switches the extra boost off first.
+    LaunchedEffect(volume) {
+        if (volume < 0.999f && boost > 0) {
+            boost = 0
+            onBoost(0, true)
+        }
+    }
+    val position = if (boost > 0) 0.5f + 0.5f * boost / maxBoost else volume * 0.5f
+    val boosted = boost > 0
+    Column(Modifier.fillMaxWidth().widthIn(max = 520.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.VolumeDown, null, tint = c.textMuted, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                VesperSlider(
+                    value = position,
+                    onValueChange = { p ->
+                        if (p <= 0.5f) {
+                            setVolume(p * 2f)
+                            if (boost != 0) {
+                                boost = 0
+                                onBoost(0, false)
+                            }
+                        } else {
+                            if (volume < 0.999f) setVolume(1f)
+                            boost = ((p - 0.5f) * 2f * maxBoost).roundToInt().coerceIn(0, maxBoost)
+                            onBoost(boost, false)
+                        }
+                    },
+                    onValueChangeFinished = { onBoost(boost, true) },
+                    trackHeight = 2.dp,
+                    activeColor = if (boosted) c.accentBright else c.textSecondary,
+                )
+                // 100 % mark — everything to the right is extra boost.
+                Box(Modifier.size(width = 2.dp, height = 10.dp).clip(Vesper.shapes.chip).background(c.textMuted.copy(alpha = 0.7f)))
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Rounded.VolumeUp, null, tint = if (boosted) c.accentBright else c.textMuted, modifier = Modifier.size(20.dp))
+        }
+        androidx.compose.animation.AnimatedVisibility(visible = boosted) {
+            val percent = (100 * Math.pow(2.0, boost / 1000.0)).roundToInt()
+            Text(
+                "Усиление $percent%" + if (boost > 1000) " · берегите слух" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (boost > 1000) c.danger else c.accentBright,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
     }
 }
 
