@@ -72,6 +72,7 @@ import app.floya.desktop.ui.HomeScreen
 import app.floya.desktop.ui.LibraryScreen
 import app.floya.desktop.ui.LocalApp
 import app.floya.desktop.ui.NowPlaying
+import app.floya.desktop.ui.Overline
 import app.floya.desktop.ui.PlayerBar
 import app.floya.desktop.ui.PlaylistScreen
 import app.floya.desktop.ui.PlaylistsScreen
@@ -193,7 +194,7 @@ private fun Sidebar(screen: Screen, go: (Screen) -> Unit) {
         NavItem(Icons.Rounded.Download, if (active > 0) "Загрузки · $active" else "Загрузки", screen == Screen.Downloads) { go(Screen.Downloads) }
         NavItem(Icons.Rounded.Settings, "Настройки", screen == Screen.Settings) { go(Screen.Settings) }
         Spacer(Modifier.height(18.dp))
-        app.floya.desktop.ui.Overline("Ваши плейлисты", Modifier.padding(start = 10.dp, bottom = 6.dp))
+        Overline("Ваши плейлисты", Modifier.padding(start = 10.dp, bottom = 6.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(playlists, key = { it.id }) { p ->
                 val sel = (screen as? Screen.PlaylistView)?.id == p.id
