@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Picker preview for the large Floya widget (a plain drawable — every launcher can show it). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="280dp" android:height="140dp" />
+            <corners android:radius="22dp" />
+            <gradient android:angle="0" android:startColor="#FF2A0F3D" android:endColor="#FF0C0714" />
+        </shape>
+    </item>
+    <item android:gravity="center_vertical|start" android:left="14dp" android:width="40dp" android:height="40dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="10dp" />
+            <solid android:color="#FF6B2A8F" />
+        </shape>
+    </item>
+    <item android:gravity="center_vertical|end" android:right="18dp" android:width="30dp" android:height="30dp" android:drawable="@drawable/w_play" />
+</layer-list>

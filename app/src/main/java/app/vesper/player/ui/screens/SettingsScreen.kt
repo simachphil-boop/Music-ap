@@ -31,6 +31,8 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Movie
@@ -107,6 +109,35 @@ fun SettingsScreen() {
                 Icons.Rounded.AutoAwesome,
                 s.ambience,
             ) { vm.setAmbience(it) }
+        }
+
+        item { Group("Виджеты и панель управления") }
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            SettingRow(
+                title = "Мини-плеер на рабочий стол",
+                subtitle = "Виджет 4×1: обложка, название и кнопки",
+                icon = Icons.Rounded.Widgets,
+                onClick = { pinWidget(context, app.vesper.player.widget.SmallPlayerWidget::class.java) { vm.message(it) } },
+            )
+        }
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            SettingRow(
+                title = "Большой плеер на рабочий стол",
+                subtitle = "Виджет 4×2 с кнопкой «Моя волна»",
+                icon = Icons.Rounded.Widgets,
+                onClick = { pinWidget(context, app.vesper.player.widget.LargePlayerWidget::class.java) { vm.message(it) } },
+            )
+        }
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            SettingRow(
+                title = "Плитка Floya в панели управления",
+                subtitle = "Пауза и продолжение прямо из панели, рядом с Wi-Fi и фонариком",
+                icon = Icons.Rounded.Tune,
+                onClick = { addTile(context) { vm.message(it) } },
+            )
         }
 
         item { Group("Воспроизведение") }
@@ -321,4 +352,36 @@ fun ThemeSwatch(bg: androidx.compose.ui.graphics.Color, accent: androidx.compose
         Spacer(Modifier.width(4.dp))
         Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(text))
     }
+}
+
+/** Asks the launcher to put a Floya widget on the home screen (it shows its own confirmation). */
+private fun pinWidget(context: android.content.Context, provider: Class<*>, say: (String) -> Unit) {
+    val manager = android.appwidget.AppWidgetManager.getInstance(context)
+    val ok = manager != null && manager.isRequestPinAppWidgetSupported &&
+        runCatching { manager.requestPinAppWidget(android.content.ComponentName(context, provider), null, null) }.getOrDefault(false)
+    if (!ok) {
+        say("Рабочий стол не даёт добавить виджет из приложения. Зажмите пустое место на рабочем столе → «Виджеты» (или «Карточки») → Floya Music.")
+    }
+}
+
+/** Offers the control-panel tile (Android 13+), otherwise explains how to add it by hand. */
+private fun addTile(context: android.content.Context, say: (String) -> Unit) {
+    val manual = "Откройте панель управления → значок карандаша вверху → перетащите плитку «Floya» к остальным."
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+        val sbm = context.getSystemService(android.app.StatusBarManager::class.java)
+        if (sbm != null) {
+            runCatching {
+                sbm.requestAddTileService(
+                    android.content.ComponentName(context, app.vesper.player.widget.FloyaTileService::class.java),
+                    "Floya",
+                    android.graphics.drawable.Icon.createWithResource(context, app.vesper.player.R.drawable.w_play),
+                    context.mainExecutor,
+                ) { result ->
+                    if (result == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED) say(manual)
+                }
+            }.onFailure { say(manual) }
+            return
+        }
+    }
+    say(manual)
 }

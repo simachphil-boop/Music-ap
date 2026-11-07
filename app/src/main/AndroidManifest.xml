@@ -55,6 +55,10 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long press on the Floya control-panel tile opens the app. -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
             <!-- Open audio files from file managers / other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -107,6 +111,21 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+
+        <!-- Floya tile for the control panel / quick settings. -->
+        <service
+            android:name=".widget.FloyaTileService"
+            android:exported="true"
+            android:icon="@drawable/w_play"
+            android:label="Floya"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
 
         <service
             android:name=".data.download.DownloadService"

@@ -60,17 +60,23 @@ object WidgetUpdater {
         val artUri: String?,
     )
 
-    private val idle = Snapshot("Floya Music", "Нажмите ▶, чтобы продолжить", false, null)
+    const val IDLE_TITLE = "Floya Music"
+    private val idle = Snapshot(IDLE_TITLE, "Нажмите ▶, чтобы продолжить", false, null)
 
     @Volatile private var last: Snapshot = idle
+
+    /** What the player is doing right now (also used by the control-panel tile). */
+    val current: Snapshot get() = last
     @Volatile private var artKey: String? = null
     @Volatile private var art: Bitmap? = null
     private val loader = Executors.newSingleThreadExecutor()
 
     fun push(context: Context, snapshot: Snapshot) {
         val app = context.applicationContext
+        val changed = last.title != snapshot.title || last.playing != snapshot.playing || last.artist != snapshot.artist
         last = snapshot
         render(app)
+        if (changed) FloyaTileService.refresh(app)
         val uri = snapshot.artUri
         if (uri != artKey) {
             artKey = uri
