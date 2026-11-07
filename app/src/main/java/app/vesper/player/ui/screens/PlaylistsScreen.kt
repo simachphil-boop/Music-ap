@@ -1,5 +1,9 @@
 package app.vesper.player.ui.screens
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -105,10 +109,14 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
     val lib by vm.library.collectAsStateWithLifecycle()
     val vids by vm.videos.collectAsStateWithLifecycle()
     val playlists = all.filter { it.kind == kind }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    remember { app.vesper.player.ui.theme.PlaylistSkins.load(context) }
+    val skins by app.vesper.player.ui.theme.PlaylistSkins.choices.collectAsStateWithLifecycle()
     var options by remember { mutableStateOf<PlaylistSummary?>(null) }
     var renaming by remember { mutableStateOf<PlaylistSummary?>(null) }
     var deleting by remember { mutableStateOf<PlaylistSummary?>(null) }
     var creating by remember { mutableStateOf(false) }
+    var theming by remember { mutableStateOf<PlaylistSummary?>(null) }
 
     if (playlists.isEmpty()) {
         EmptyState(
@@ -136,7 +144,24 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
                         .clip(Vesper.shapes.small)
                         .combinedClickable(onClick = { ui.openPlaylist(p.id) }, onLongClick = { options = p }),
                 ) {
-                    PlaylistArt(p, previews[p.id].orEmpty(), lib, vids, Modifier.fillMaxWidth().aspectRatio(1f))
+                    val skin = app.vesper.player.ui.theme.PlaylistSkins.byId(skins[p.id])
+                    if (skin != null && p.coverPath == null) {
+                        // Themed playlist: its scene becomes the cover, with a small badge.
+                        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(Vesper.shapes.artwork)) {
+                            app.vesper.player.ui.theme.SkinScene(
+                                skin.scene, Modifier.fillMaxSize(),
+                                fadeTo = skin.theme.palette.background.copy(alpha = 0.7f), animate = false,
+                            )
+                            Text(
+                                skin.name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = skin.theme.palette.textPrimary,
+                                modifier = Modifier.align(Alignment.BottomStart).padding(10.dp),
+                            )
+                        }
+                    } else {
+                        PlaylistArt(p, previews[p.id].orEmpty(), lib, vids, Modifier.fillMaxWidth().aspectRatio(1f))
+                    }
                     Spacer(Modifier.height(10.dp))
                     Text(p.name, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
@@ -169,10 +194,16 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
                         if (ids.isEmpty()) vm.message("Плейлист пуст") else ui.openPlaylist(p.id)
                     })
                 }
+                add(SheetAction(Icons.Rounded.Palette, "Тема плейлиста") { theming = p })
                 add(SheetAction(Icons.Rounded.Edit, "Переименовать") { renaming = p })
                 add(SheetAction(Icons.Rounded.Delete, "Удалить", destructive = true) { deleting = p })
             },
         )
+    }
+    theming?.let { p ->
+        SkinPickerSheet(current = skins[p.id], onDismiss = { theming = null }) {
+            app.vesper.player.ui.theme.PlaylistSkins.set(context, p.id, it)
+        }
     }
     renaming?.let { p ->
         TextInputDialog("Переименовать", "Название", p.name, "Сохранить", onDismiss = { renaming = null }) {

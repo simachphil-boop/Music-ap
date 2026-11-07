@@ -164,6 +164,33 @@ class Downloader(
 
     suspend fun fetchInfo(rawUrl: String): Result<LinkInfo> {
         val url = extractUrl(rawUrl) ?: return Result.failure(IllegalArgumentException("Это не похоже на ссылку"))
+        // Fast answers first: a direct file link, or YouTube's own API — both without starting yt-dlp.
+        withContext(Dispatchers.IO) { DirectLink.probe(url) }?.let { d ->
+            return Result.success(
+                LinkInfo(
+                    url = url,
+                    title = d.fileName.substringBeforeLast('.'),
+                    uploader = "",
+                    durationSec = 0,
+                    thumbnail = null,
+                    source = "Прямая ссылка · " + d.ext.uppercase(),
+                    heights = emptyList(),
+                ),
+            )
+        }
+        withContext(Dispatchers.IO) { runCatching { YouTubeFast.details(url) }.getOrNull() }?.let { d ->
+            return Result.success(
+                LinkInfo(
+                    url = url,
+                    title = d.title.ifBlank { "Без названия" },
+                    uploader = d.author,
+                    durationSec = d.durationSec,
+                    thumbnail = d.thumbnail,
+                    source = "Youtube",
+                    heights = d.heights,
+                ),
+            )
+        }
         if (!ensureEngine()) return Result.failure(IllegalStateException("Не удалось запустить движок загрузки (${FfmpegTool.lastError})"))
         autoUpdateIfStale()
         return withContext(Dispatchers.IO) {
@@ -338,8 +365,14 @@ class Downloader(
     private suspend fun run(task: DownloadTask) = withContext(Dispatchers.IO) {
         val workDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "downloads/${task.id}").apply { mkdirs() }
         try {
-            if (!ensureEngine()) error("Не удалось запустить движок загрузки (${FfmpegTool.lastError})")
             updateTask(task.id) { it.copy(status = DownloadStatus.DOWNLOADING) }
+            val direct = directFile(task, workDir)
+            if (direct != null) {
+                finish(task, direct)
+                return@withContext
+            }
+            if (isCanceled(task.id)) return@withContext
+            if (!ensureEngine()) error("Не удалось запустить движок загрузки (${FfmpegTool.lastError})")
             val fast = runCatching { fastYouTubeAudio(task, workDir) }.getOrNull()
             if (fast != null) {
                 finish(task, fast)
@@ -449,6 +482,56 @@ class Downloader(
             is ProbeResult.Unsupported -> null
         }
         updateTask(task.id) { it.copy(status = DownloadStatus.DONE, progress = 1f, mediaId = mediaId) }
+    }
+
+    /** Direct file links: plain parallel HTTP download, saved as is — the "old download site" speed. */
+    private suspend fun directFile(task: DownloadTask, workDir: File): File? {
+        if (task.edit != null) return null
+        val d = DirectLink.cached(task.url) ?: DirectLink.probe(task.url) ?: return null
+        val fits = (task.kind == DownloadKind.AUDIO && d.isAudio) || (task.kind == DownloadKind.VIDEO && d.isVideo)
+        if (!fits) return null
+        val target = File(workDir, d.fileName)
+        val ok = ParallelHttp.download(d.url, DirectLink.headers, d.length, target, { isCanceled(task.id) }) { done, total, bps ->
+            updateTask(task.id) {
+                if (it.status == DownloadStatus.CANCELED) it
+                else it.copy(progress = (done.toFloat() / total).coerceIn(0f, 1f), etaSec = if (bps > 0) (total - done) / bps else 0)
+            }
+        }
+        if (ok) return target
+        // Server doesn't allow parts (no Range support): one ordinary stream, still without yt-dlp.
+        if (isCanceled(task.id)) return null
+        return runCatching {
+            val conn = (java.net.URL(d.url).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 20_000
+                DirectLink.headers.forEach { (k, v) -> setRequestProperty(k, v) }
+            }
+            try {
+                val total = conn.contentLengthLong
+                conn.inputStream.use { input ->
+                    target.outputStream().use { out ->
+                        val buf = ByteArray(256 * 1024)
+                        var done = 0L
+                        var lastUi = 0L
+                        while (true) {
+                            if (isCanceled(task.id)) return@runCatching null
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                            done += n
+                            val now = System.currentTimeMillis()
+                            if (total > 0 && now - lastUi > 300) {
+                                lastUi = now
+                                updateTask(task.id) { it.copy(progress = (done.toFloat() / total).coerceIn(0f, 1f)) }
+                            }
+                        }
+                    }
+                }
+                target.takeIf { it.length() > 0 }
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrNull()
     }
 
     private fun isCanceled(id: String) = _tasks.value.firstOrNull { it.id == id }?.status == DownloadStatus.CANCELED

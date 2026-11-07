@@ -1,7 +1,19 @@
 package app.vesper.player.ui.screens
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import app.vesper.player.ui.theme.PlaylistSkin
+import app.vesper.player.ui.theme.PlaylistSkins
+import app.vesper.player.ui.theme.SkinParticles
+import app.vesper.player.ui.theme.SkinScene
+import app.vesper.player.ui.theme.VesperThemeProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -85,10 +97,27 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    remember { PlaylistSkins.load(context) }
+    val choices by PlaylistSkins.choices.collectAsStateWithLifecycle()
+    val skin = PlaylistSkins.byId(choices[playlistId])
+    if (skin == null) {
+        PlaylistDetailBody(playlistId, onBack, null)
+    } else {
+        // The playlist's own theme: palette, fonts and shapes for everything inside, independent of the app theme.
+        VesperThemeProvider(skin.theme, applySystemBars = false) {
+            PlaylistDetailBody(playlistId, onBack, skin)
+        }
+    }
+}
+
+@Composable
+private fun PlaylistDetailBody(playlistId: Long, onBack: () -> Unit, skin: PlaylistSkin?) {
     val vm = LocalViewModel.current
     val ui = LocalUi.current
     val actions = LocalAppActions.current
     val c = Vesper.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
     val flow = remember(playlistId) { vm.playlistDetail(playlistId) }
     val detail by flow.collectAsState(initial = null)
     val player by vm.player.state.collectAsStateWithLifecycle()
@@ -124,16 +153,37 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
     var renaming by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
 
     val d = detail
     val isVideo = d?.playlist?.kind == PlaylistKind.VIDEO
 
+    Box(Modifier.fillMaxSize().then(if (skin != null) Modifier.background(c.background) else Modifier)) {
+    if (skin != null) {
+        // Living picture behind the header; it slides up slower than the list (parallax).
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        SkinScene(
+            skin.scene,
+            Modifier
+                .fillMaxWidth()
+                .height(420.dp)
+                .graphicsLayer {
+                    val first = listState.firstVisibleItemIndex
+                    val off = if (first == 0) listState.firstVisibleItemScrollOffset.toFloat() else with(density) { 800.dp.toPx() }
+                    translationY = -off * 0.45f
+                    alpha = (1f - off / with(density) { 520.dp.toPx() }).coerceIn(0f, 1f)
+                },
+            fadeTo = c.background,
+        )
+        SkinParticles(skin.scene, Modifier.fillMaxSize())
+    }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
         item(key = "top") {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 PressableIcon(Icons.Rounded.ArrowBack, "Назад", onClick = onBack)
                 Spacer(Modifier.weight(1f))
                 if (d != null) {
+                    PressableIcon(Icons.Rounded.Palette, "Тема плейлиста", onClick = { picking = true })
                     PressableIcon(Icons.Rounded.Add, "Добавить", onClick = { adding = true })
                     PressableIcon(Icons.Rounded.MoreVert, "Ещё", onClick = { menu = true })
                 }
@@ -145,6 +195,7 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
         }
         item(key = "hero") {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (skin != null) Spacer(Modifier.height(120.dp))
                 Box(
                     Modifier
                         .size(200.dp)
@@ -160,7 +211,10 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(16.dp))
-                OverlineText(if (isVideo) "Видеоплейлист" else "Плейлист", color = c.ornament)
+                OverlineText(
+                    (if (isVideo) "Видеоплейлист" else "Плейлист") + (skin?.let { " · ${it.name}" } ?: ""),
+                    color = c.ornament,
+                )
                 Text(
                     d.playlist.name,
                     style = MaterialTheme.typography.headlineLarge,
@@ -211,7 +265,7 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
                     )
                 }
                 val removeAction = ExtraTrackAction("Удалить из плейлиста") { vm.removePlaylistItem(playlistId, entry.item.id) }
-                Box(Modifier.then(if (dragging) Modifier.shadow(10.dp).background(c.surfaceHigh) else Modifier.background(c.background))) {
+                Box(Modifier.then(if (dragging) Modifier.shadow(10.dp).background(c.surfaceHigh) else if (skin == null) Modifier.background(c.background) else Modifier)) {
                     val track = entry.track
                     val video = entry.video
                     if (track != null) {
@@ -241,6 +295,7 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
             }
         }
     }
+    }
 
     if (menu && d != null) {
         ActionSheet(
@@ -249,6 +304,7 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
                 SheetAction(Icons.Rounded.Add, if (isVideo) "Добавить видео" else "Добавить треки") { adding = true },
                 SheetAction(Icons.Rounded.Edit, "Переименовать") { renaming = true },
                 SheetAction(Icons.Rounded.Image, "Изменить обложку") { coverMenu = true },
+                SheetAction(Icons.Rounded.Palette, "Тема плейлиста") { picking = true },
                 SheetAction(Icons.Rounded.Delete, "Удалить плейлист", destructive = true) { deleting = true },
             ),
         )
@@ -284,6 +340,9 @@ fun PlaylistDetailScreen(playlistId: Long, onBack: () -> Unit) {
                 onBack()
             },
         )
+    }
+    if (picking) {
+        SkinPickerSheet(current = skin?.id, onDismiss = { picking = false }) { PlaylistSkins.set(context, playlistId, it) }
     }
     if (adding && d != null) {
         AddItemsSheet(
@@ -398,6 +457,84 @@ private fun SearchFieldInline(query: String, onChange: (String) -> Unit) {
             Icon(Icons.Rounded.Search, null, tint = Vesper.colors.textMuted, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
             Text("Поиск", style = MaterialTheme.typography.bodyLarge, color = Vesper.colors.textMuted)
+        }
+    }
+}
+
+/** Grid of playlist themes with live miniature scenes. [onPick] gets null for "as in the app". */
+@Composable
+fun SkinPickerSheet(current: String?, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
+    val c = Vesper.colors
+    VesperSheet(onDismiss) { dismiss ->
+        Text(
+            "Тема плейлиста",
+            style = MaterialTheme.typography.headlineSmall,
+            color = c.textPrimary,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 4.dp),
+        )
+        Text(
+            "Своё оформление только для этого плейлиста — тема приложения не меняется.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
+        )
+        val options: List<PlaylistSkin?> = listOf(null) + PlaylistSkins.all
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+            items(options.chunked(2)) { row ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { option ->
+                        SkinCard(option, selected = option?.id == current, modifier = Modifier.weight(1f)) {
+                            onPick(option?.id)
+                            dismiss {}
+                        }
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkinCard(skin: PlaylistSkin?, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val c = Vesper.colors
+    val shape = Vesper.shapes.medium
+    Column(
+        modifier
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .then(if (selected) Modifier.border(2.dp, c.accentBright, shape) else Modifier.border(1.dp, c.outline, shape)),
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1.5f)) {
+            if (skin != null) {
+                SkinScene(skin.scene, Modifier.fillMaxSize(), fadeTo = skin.theme.palette.background.copy(alpha = 0.6f), animate = selected)
+            } else {
+                Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(c.highlight, c.surfaceHigh))), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Palette, null, tint = c.textMuted, modifier = Modifier.size(28.dp))
+                }
+            }
+            if (selected) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp).size(22.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c.accentBright),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Rounded.Check, null, tint = c.onAccent, modifier = Modifier.size(15.dp)) }
+            }
+        }
+        Column(Modifier.background(skin?.theme?.palette?.surface ?: c.surface).fillMaxWidth().padding(10.dp)) {
+            Text(
+                skin?.name ?: "Как в приложении",
+                style = MaterialTheme.typography.titleSmall,
+                color = skin?.theme?.palette?.textPrimary ?: c.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                skin?.tagline ?: "Цвета текущей темы Floya",
+                style = MaterialTheme.typography.bodySmall,
+                color = skin?.theme?.palette?.textSecondary ?: c.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

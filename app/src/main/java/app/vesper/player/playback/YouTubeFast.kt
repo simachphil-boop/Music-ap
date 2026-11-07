@@ -84,7 +84,8 @@ object YouTubeFast {
         return null
     }
 
-    private fun request(videoId: String, c: Client): Stream? {
+    /** Raw answer of YouTube's player API for one client, or null. */
+    private fun player(videoId: String, c: Client): JSONObject? {
         val clientJson = JSONObject()
             .put("clientName", c.name)
             .put("clientVersion", c.version)
@@ -116,6 +117,37 @@ object YouTubeFast {
         }
         val root = JSONObject(text)
         if (root.optJSONObject("playabilityStatus")?.optString("status") != "OK") return null
+        return root
+    }
+
+    data class Details(val title: String, val author: String, val durationSec: Int, val thumbnail: String, val heights: List<Int>)
+
+    /** Title, channel, length and available video heights in one quick request (no yt-dlp). */
+    fun details(pageUrl: String): Details? {
+        val id = videoId(pageUrl) ?: return null
+        for (client in clients) {
+            val root = runCatching { player(id, client) }.getOrNull() ?: continue
+            val d = root.optJSONObject("videoDetails") ?: continue
+            val formats = root.optJSONObject("streamingData")?.optJSONArray("adaptiveFormats")
+            val heights = buildList {
+                if (formats != null) for (i in 0 until formats.length()) {
+                    val f = formats.optJSONObject(i) ?: continue
+                    if (f.optString("mimeType").startsWith("video/")) f.optInt("height").takeIf { it > 0 }?.let { add(it) }
+                }
+            }.distinct().sortedDescending()
+            return Details(
+                title = d.optString("title"),
+                author = d.optString("author").removeSuffix(" - Topic"),
+                durationSec = d.optString("lengthSeconds").toIntOrNull() ?: 0,
+                thumbnail = "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+                heights = heights,
+            )
+        }
+        return null
+    }
+
+    private fun request(videoId: String, c: Client): Stream? {
+        val root = player(videoId, c) ?: return null
         val streaming = root.optJSONObject("streamingData") ?: return null
         val formats = streaming.optJSONArray("adaptiveFormats") ?: return null
         var best: JSONObject? = null
