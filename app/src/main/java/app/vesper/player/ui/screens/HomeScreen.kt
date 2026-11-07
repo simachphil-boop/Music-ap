@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Whatshot
@@ -36,7 +37,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -91,6 +94,13 @@ fun HomeScreen() {
     val hasPermission = vm.hasAudioPermission() || vm.hasVideoPermission()
 
     val seen = remember { mutableSetOf<String>() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Re-checked every time the user comes back (e.g. from the notification settings).
+    var notificationsOn by remember { mutableStateOf(true) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        notificationsOn = playbackNotificationsOn(context)
+        onPauseOrDispose { }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
         item(key = "header") { Appear(seen, "header", 0) { HomeHeader(lib.allTracks.size, vids.all.size) }}
         item(key = "search") { Appear(seen, "search", 1) {
@@ -110,6 +120,9 @@ fun HomeScreen() {
                 Text("Найти песню, исполнителя или видео", style = MaterialTheme.typography.bodyLarge, color = c.textMuted)
             }
         }}
+        if (!notificationsOn) {
+            item(key = "notif") { Appear(seen, "notif", 2) { NotificationsBanner() } }
+        }
         item(key = "wave") { Appear(seen, "wave", 2) { WaveSection() }}
         if (lib.allTracks.isNotEmpty()) {
             item(key = "discover") { Appear(seen, "discover", 3) {
@@ -428,5 +441,55 @@ private fun DiscoverCard(icon: ImageVector, title: String, subtitle: String, mod
         Text(title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(2.dp))
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * The player card in the phone's control panel / notification shade (and on the lock screen) is
+ * built from Floya's playback notification — if notifications are off, the card can't appear.
+ */
+private fun playbackNotificationsOn(context: android.content.Context): Boolean {
+    val nm = androidx.core.app.NotificationManagerCompat.from(context)
+    if (!nm.areNotificationsEnabled()) return false
+    val channel = nm.getNotificationChannel("default_channel_id")
+    return channel == null || channel.importance != androidx.core.app.NotificationManagerCompat.IMPORTANCE_NONE
+}
+
+@Composable
+private fun NotificationsBanner() {
+    val c = Vesper.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Row(
+        Modifier
+            .padding(horizontal = 20.dp)
+            .padding(top = 14.dp)
+            .fillMaxWidth()
+            .bouncyClick({
+                val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(intent) }.onFailure {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(android.net.Uri.parse("package:" + context.packageName))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            })
+            .clip(Vesper.shapes.medium)
+            .background(c.highlight)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.NotificationsOff, null, tint = c.accentBright, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Включите уведомления Floya", style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
+            Text(
+                "Без них плеер не появится в панели управления, шторке и на экране блокировки. Нажмите, чтобы открыть настройки.",
+                style = MaterialTheme.typography.bodySmall,
+                color = c.textSecondary,
+            )
+        }
     }
 }
