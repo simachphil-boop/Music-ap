@@ -1,0 +1,69 @@
+name: Build Windows app
+
+on:
+  push:
+    branches: [ "**" ]
+    paths: [ "desktop/**", ".github/workflows/desktop.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: desktop
+    env:
+      FLOYA_VERSION: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Bundle ffmpeg and yt-dlp
+        run: |
+          New-Item -ItemType Directory -Force -Path appResources/windows | Out-Null
+          Invoke-WebRequest -Uri https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp
+          Copy-Item (Get-ChildItem -Recurse -Path ffmpeg-tmp -Filter ffmpeg.exe | Select-Object -First 1).FullName appResources/windows/ffmpeg.exe
+          Invoke-WebRequest -Uri https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile appResources/windows/yt-dlp.exe
+          Remove-Item -Recurse -Force ffmpeg.zip, ffmpeg-tmp
+          Get-ChildItem appResources/windows
+
+      - name: Build installer and portable app
+        run: ./gradlew.bat --no-daemon --stacktrace packageMsi createDistributable
+
+      - name: Collect files
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $msi = Get-ChildItem -Recurse build/compose/binaries -Filter *.msi | Select-Object -First 1
+          Copy-Item $msi.FullName "dist/FloyaMusic-Windows-$env:FLOYA_VERSION.msi"
+          $app = Get-ChildItem -Directory build/compose/binaries/main/app | Select-Object -First 1
+          Compress-Archive -Path $app.FullName -DestinationPath "dist/FloyaMusic-Windows-$env:FLOYA_VERSION-portable.zip"
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FloyaMusic-windows
+          path: desktop/dist/*
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-${{ github.run_number }}
+          name: Floya Music для Windows ${{ env.FLOYA_VERSION }}
+          body: |
+            Floya Music для Windows 10/11 (64-бит).
+            .msi — установщик (ярлык в меню «Пуск»). portable.zip — без установки: распакуйте и запустите «Floya Music.exe».
+          prerelease: true
+          files: desktop/dist/*
