@@ -100,7 +100,7 @@ private fun rnd(i: Int, salt: Int): Float {
 
 private fun frac(v: Float) = v - floor(v)
 
-private fun DrawScope.sky(vararg colors: Color) = drawRect(Brush.verticalGradient(colors.toList()))
+private fun DrawScope.sky(colors: List<Color>) = drawRect(Brush.verticalGradient(colors))
 
 private fun DrawScope.glow(center: Offset, radius: Float, color: Color) =
     drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), center, radius), radius, center)
@@ -178,7 +178,7 @@ private fun DrawScope.flock(t: Float, count: Int, color: Color, yFrom: Float, yT
 private fun DrawScope.darkFantasy(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF0E0716), Color(0xFF2A0F25), Color(0xFF4B1426))
+    sky(listOf(Color(0xFF0E0716), Color(0xFF2A0F25), Color(0xFF4B1426)))
     stars(t, 40, 0.55f, Color(0xFFF3E6D0))
     val moon = Offset(w * 0.74f, h * 0.27f)
     glow(moon, w * 0.42f, Color(0xFFE9C98A).copy(alpha = 0.28f))
@@ -222,7 +222,7 @@ private fun DrawScope.darkFantasy(t: Float) {
 private fun DrawScope.nature(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF7FB4D8), Color(0xFFF2C9A0), Color(0xFFF6A97A))
+    sky(listOf(Color(0xFF7FB4D8), Color(0xFFF2C9A0), Color(0xFFF6A97A)))
     val sun = Offset(w * 0.68f, h * 0.48f)
     rotate(t * 3f, sun) {
         for (k in 0 until 12) {
@@ -247,7 +247,7 @@ private fun DrawScope.nature(t: Float) {
 private fun DrawScope.ocean(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF0B1E3A), Color(0xFF1D4F7A), Color(0xFF3C86A8))
+    sky(listOf(Color(0xFF0B1E3A), Color(0xFF1D4F7A), Color(0xFF3C86A8)))
     stars(t, 25, 0.35f)
     val moon = Offset(w * 0.3f, h * 0.24f)
     glow(moon, w * 0.3f, Color(0xFFCDEFFF).copy(alpha = 0.3f))
@@ -280,7 +280,7 @@ private fun DrawScope.ocean(t: Float) {
 private fun DrawScope.cosmos(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF05041A), Color(0xFF120A33), Color(0xFF1C0D3D))
+    sky(listOf(Color(0xFF05041A), Color(0xFF120A33), Color(0xFF1C0D3D)))
     glow(Offset(w * 0.25f, h * 0.35f), w * 0.55f, Color(0xFF7A3DD8).copy(alpha = 0.35f))
     glow(Offset(w * 0.7f, h * 0.6f), w * 0.5f, Color(0xFF2E7BD8).copy(alpha = 0.3f))
     glow(Offset(w * 0.55f + sin(t * 0.1f) * 20f, h * 0.3f), w * 0.3f, Color(0xFFE05AB8).copy(alpha = 0.22f))
@@ -311,7 +311,7 @@ private fun DrawScope.cosmos(t: Float) {
 private fun DrawScope.sakura(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFFF6C7D8), Color(0xFFF3A9C2), Color(0xFFE48AAE))
+    sky(listOf(Color(0xFFF6C7D8), Color(0xFFF3A9C2), Color(0xFFE48AAE)))
     val sun = Offset(w * 0.62f, h * 0.45f)
     glow(sun, w * 0.4f, Color(0xFFFFF0F4).copy(alpha = 0.6f))
     drawCircle(Color(0xFFFFE4EC), w * 0.13f, sun)
@@ -340,7 +340,7 @@ private fun DrawScope.sakura(t: Float) {
 private fun DrawScope.synthwave(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF14062B), Color(0xFF4A0D5E), Color(0xFFB0256E))
+    sky(listOf(Color(0xFF14062B), Color(0xFF4A0D5E), Color(0xFFB0256E)))
     stars(t, 30, 0.4f)
     val horizon = h * 0.64f
     val sun = Offset(w * 0.5f, horizon - h * 0.04f)
@@ -368,7 +368,7 @@ private fun DrawScope.synthwave(t: Float) {
 private fun DrawScope.noir(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF0D1015), Color(0xFF1C222C), Color(0xFF2A2F37))
+    sky(listOf(Color(0xFF0D1015), Color(0xFF1C222C), Color(0xFF2A2F37)))
     // Lightning now and then.
     val f = frac(t / 9f)
     if (f < 0.03f || (f > 0.045f && f < 0.06f)) drawRect(Color.White.copy(alpha = 0.18f))
@@ -409,7 +409,7 @@ private fun DrawScope.noir(t: Float) {
 private fun DrawScope.winter(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF1B2D4A), Color(0xFF4F6E93), Color(0xFFA9C0D8))
+    sky(listOf(Color(0xFF1B2D4A), Color(0xFF4F6E93), Color(0xFFA9C0D8)))
     stars(t, 20, 0.3f)
     val moon = Offset(w * 0.78f, h * 0.22f)
     glow(moon, w * 0.3f, Color.White.copy(alpha = 0.25f))
@@ -438,7 +438,7 @@ private fun DrawScope.winter(t: Float) {
 private fun DrawScope.fire(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF1A0505), Color(0xFF4A0E07), Color(0xFF9A2A0C))
+    sky(listOf(Color(0xFF1A0505), Color(0xFF4A0E07), Color(0xFF9A2A0C)))
     val pulse = 0.75f + 0.25f * sin(t * 1.7f)
     glow(Offset(w * 0.5f, h * 0.55f), w * 0.7f, Color(0xFFFF6A1F).copy(alpha = 0.35f * pulse))
     // Volcano.
@@ -473,7 +473,7 @@ private fun DrawScope.fire(t: Float) {
 private fun DrawScope.desert(t: Float) {
     val w = size.width
     val h = size.height
-    sky(Color(0xFF2B1640), Color(0xFF8C3B5A), Color(0xFFF08A4B), Color(0xFFFFC271))
+    sky(listOf(Color(0xFF2B1640), Color(0xFF8C3B5A), Color(0xFFF08A4B), Color(0xFFFFC271)))
     stars(t, 18, 0.25f)
     val sun = Offset(w * 0.45f, h * 0.6f)
     glow(sun, w * 0.45f, Color(0xFFFFD08A).copy(alpha = 0.5f))
