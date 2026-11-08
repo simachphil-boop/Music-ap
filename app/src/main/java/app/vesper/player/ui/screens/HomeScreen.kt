@@ -34,6 +34,9 @@ import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Whatshot
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -144,7 +147,7 @@ fun HomeScreen() {
                     item { Shortcut(Icons.Rounded.ShowChart, "Энергия") { ui.open(Routes.ENERGY_CURVE) } }
                     item { Shortcut(Icons.Rounded.SwapHoriz, "Из Яндекса") { ui.open(Routes.YANDEX_IMPORT) } }
                     item { Shortcut(Icons.Rounded.Download, "По ссылке") { ui.goToTab(Routes.DOWNLOADS) } }
-                    item { Shortcut(androidx.compose.material.icons.Icons.Rounded.Movie, "Кино") { ui.open(Routes.MOVIES) } }
+                    item { Shortcut(Icons.Rounded.Movie, "Кино") { ui.open(Routes.MOVIES) } }
                 }
             }}
         }
@@ -332,7 +335,7 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
                     )
                 }
             }
-            HeaderIcon(androidx.compose.material.icons.Icons.Rounded.Insights, "Твой вайб") { ui.open(Routes.STATS) }
+            HeaderIcon(Icons.Rounded.Insights, "Твой вайб") { ui.open(Routes.STATS) }
             Spacer(Modifier.width(4.dp))
             // Profile: initial of the account, or a sign-in prompt.
             Box(
@@ -347,7 +350,7 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
                 if (name != null) {
                     Text(name.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.onAccent)
                 } else {
-                    Icon(androidx.compose.material.icons.Icons.Rounded.Person, "Войти в аккаунт", tint = c.textSecondary, modifier = Modifier.size(22.dp))
+                    Icon(Icons.Rounded.Person, "Войти в аккаунт", tint = c.textSecondary, modifier = Modifier.size(22.dp))
                 }
             }
             if (session != null) {
