@@ -10,7 +10,7 @@ class AssistantRequestTest {
     @Test fun cleansCommands() {
         assertEquals("спокойным инструментальным джазом для расслабления или сна",
             MusicAssistant.cleanRequest("собери мне плейлист со спокойным инструментальным джазом для расслабления или сна"))
-        assertEquals("для прогулки", MusicAssistant.cleanRequest("Для прогулки"))
+        assertEquals("Для прогулки", MusicAssistant.cleanRequest("Для прогулки"))
         assertTrue(MusicAssistant.wantsPlaylist("собери мне плейлист"))
     }
 
