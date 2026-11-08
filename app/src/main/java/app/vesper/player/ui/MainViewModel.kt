@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.vesper.player.appContainer
 import app.vesper.player.playback.AudioEffects
+import app.vesper.player.data.movies.MovieCollection
+import app.vesper.player.data.transfer.ImportReview
 import app.vesper.player.data.LibraryRepository
 import app.vesper.player.data.db.PlaylistEntity
 import app.vesper.player.data.db.PlaylistItemEntity
@@ -95,9 +97,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val transfer = container.transfer
     val webSearch = container.webSearch
     /** Checking matches of an imported list (Yandex Music, file, link) before saving it. */
-    val importReview = app.vesper.player.data.transfer.ImportReview(webSearch, transfer, viewModelScope)
+    val importReview = ImportReview(webSearch, transfer, viewModelScope)
     /** «Моя коллекция Кинопоиска». */
-    val movies = app.vesper.player.data.movies.MovieCollection(app, viewModelScope)
+    val movies = MovieCollection(app, viewModelScope)
 
     /** Link received via "Share → Floya Music"; consumed by the downloads screen. */
     val sharedUrl = MutableStateFlow<String?>(null)
