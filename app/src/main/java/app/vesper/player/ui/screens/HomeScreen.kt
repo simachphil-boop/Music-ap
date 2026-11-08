@@ -128,7 +128,8 @@ fun HomeScreen() {
         if (!notificationsOn) {
             item(key = "notif") { Appear(seen, "notif", 2) { NotificationsBanner() } }
         }
-        if (lib.allTracks.isNotEmpty()) {
+        item(key = "ai") { Appear(seen, "ai", 2) { AiPickerCard() } }
+        run {
             item(key = "shortcuts") { Appear(seen, "shortcuts", 3) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
@@ -411,6 +412,51 @@ private fun NowPlayingCard(onOpen: () -> Unit) {
         }
         Spacer(Modifier.width(12.dp))
         PlayPauseButton(state.isPlaying, onClick = { vm.player.togglePlayPause() }, size = 42.dp)
+    }
+}
+
+/** Entry to the AI picker of songs and videos, with a few ready requests. */
+@Composable
+private fun AiPickerCard() {
+    val ui = LocalUi.current
+    val c = Vesper.colors
+    fun open(q: String?) {
+        ui.assistantQuery = q
+        ui.open(Routes.ASSISTANT)
+    }
+    Column(
+        Modifier
+            .padding(horizontal = 20.dp)
+            .padding(top = 10.dp)
+            .fillMaxWidth()
+            .clip(Vesper.shapes.medium)
+            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(c.highlight, c.surfaceHigh)))
+            .border(1.dp, c.outline, Vesper.shapes.medium)
+            .clickable { open(null) }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AutoAwesome, null, tint = c.accentBright, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("ИИ-подбор песен и видео", style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
+                Text("Скажи, что хочется, — соберу из твоей музыки и найду новое", style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
+            items(listOf("Для прогулки", "Похожее на этот трек", "Клипы под настроение", "Спокойное на вечер", "Для тренировки")) { q ->
+                Text(
+                    q,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = c.textPrimary,
+                    modifier = Modifier
+                        .clip(Vesper.shapes.chip)
+                        .background(c.surface)
+                        .clickable { open(q) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
     }
 }
 

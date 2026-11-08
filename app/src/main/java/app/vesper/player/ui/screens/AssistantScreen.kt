@@ -1,6 +1,8 @@
 package app.vesper.player.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,7 +43,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,6 +88,11 @@ fun AssistantScreen(onBack: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var answer by remember { mutableStateOf<AssistantAnswer?>(null) }
+    var found by remember { mutableStateOf<app.vesper.player.data.assistant.Discovery?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    val vids by vm.videos.collectAsStateWithLifecycle()
+    val actions = app.vesper.player.ui.LocalAppActions.current
+    val initial = app.vesper.player.ui.LocalUi.current.assistantQuery
     var settings by remember { mutableStateOf(false) }
     var lastQuery by remember { mutableStateOf("") }
     val cfg = remember(settings) { vm.assistant.config }
@@ -96,11 +102,29 @@ fun AssistantScreen(onBack: () -> Unit) {
         if (q.isEmpty() || loading) return
         lastQuery = q
         loading = true
+        searching = true
+        found = null
+        val current = player.current?.trackId?.takeIf { it > 0 }
         scope.launch {
             val profiles = vm.soundProfiles()
-            val current = player.current?.trackId?.takeIf { it > 0 }
             answer = vm.assistant.ask(q, lib.allTracks, profiles, current)
             loading = false
+        }
+        scope.launch {
+            found = runCatching {
+                vm.assistant.discover(q, lib.allTracks, vids.all, current?.let { id -> lib.allTracks.firstOrNull { it.id == id } }, vm.webSearch)
+            }.getOrNull()
+            searching = false
+        }
+    }
+
+    val uiCtl = app.vesper.player.ui.LocalUi.current
+    androidx.compose.runtime.LaunchedEffect(initial) {
+        val q = initial
+        uiCtl.assistantQuery = null
+        if (!q.isNullOrBlank()) {
+            query = q
+            ask(q)
         }
     }
 
@@ -113,16 +137,16 @@ fun AssistantScreen(onBack: () -> Unit) {
             }
             Column(Modifier.padding(horizontal = 20.dp)) {
                 OverlineText(if (cfg.usable) "ИИ · ${cfg.model}" else "Локальный подбор · без ИИ", color = c.ornament)
-                Text("Подбор музыки", style = MaterialTheme.typography.headlineMedium, color = c.textPrimary)
+                Text("Подбор музыки и видео", style = MaterialTheme.typography.headlineMedium, color = c.textPrimary)
                 Text(
-                    if (cfg.usable) "Запрос и список кандидатов из вашей библиотеки отправляются выбранной модели — она выбирает и объясняет."
-                    else "Работает прямо на телефоне: анализ звучания треков, избранное и история. Подключить настоящую ИИ-модель можно в ⚙.",
+                    if (cfg.usable) "ИИ выбирает из вашей библиотеки и советует новые песни и видео из интернета."
+                    else "Из вашей библиотеки — по звучанию, избранному и истории; новое — поиском в YouTube Music и YouTube. Настоящую ИИ-модель можно подключить в ⚙.",
                     style = MaterialTheme.typography.bodySmall,
                     color = c.textSecondary,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { VesperTextField(query, { query = it }, "Что послушаем?") }
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { VesperTextField(query, { query = it }, "Что послушать или посмотреть?") }
                     PressableIcon(Icons.Rounded.Send, "Подобрать", onClick = { ask(query) }, tint = c.accentBright)
                 }
             }
@@ -175,9 +199,79 @@ fun AssistantScreen(onBack: () -> Unit) {
                 }
             }
         }
+        if (searching) {
+            item {
+                Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = c.accentBright, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Ищу новое в интернете…", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                }
+            }
+        }
+        found?.let { d ->
+            d.note?.let { n -> item { Text(n, style = MaterialTheme.typography.bodySmall, color = c.danger, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) } }
+            if (d.songs.isNotEmpty()) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            OverlineText(if (d.byAi) "Советует ИИ · онлайн" else "Новое · онлайн", color = c.ornament)
+                            Text(d.title.ifBlank { "Новые песни" }, style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
+                        }
+                        PressableIcon(Icons.Rounded.PlayArrow, "Слушать все", onClick = { playFound(vm, d.songs, 0) }, tint = c.accentBright)
+                    }
+                }
+                itemsIndexed(d.songs, key = { _, f -> "s" + f.result.url }) { i, f ->
+                    OnlineRow(f.result.thumbnail, f.result.title, f.result.author.substringBefore(" · "), f.why) { playFound(vm, d.songs, i) }
+                }
+            }
+            if (d.localVideos.isNotEmpty() || d.onlineVideos.isNotEmpty()) {
+                item {
+                    Column(Modifier.padding(start = 20.dp, top = 18.dp, bottom = 6.dp)) {
+                        OverlineText("Видео", color = c.ornament)
+                        Text("Посмотреть", style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
+                    }
+                }
+                itemsIndexed(d.localVideos, key = { _, v -> "lv" + v.id }) { i, v ->
+                    OnlineRow(v.uri, v.title, "У вас на телефоне", "") { actions.openVideos(d.localVideos, i) }
+                }
+                itemsIndexed(d.onlineVideos, key = { _, r -> "ov" + r.url }) { _, r ->
+                    OnlineRow(r.thumbnail, r.title, r.author, "") { actions.openOnlineVideo(r.url, r.title) }
+                }
+            }
+            if (d.songs.isEmpty() && d.onlineVideos.isEmpty() && d.localVideos.isEmpty()) {
+                item { Text("В интернете ничего не нашлось — проверьте подключение или измените запрос.", style = MaterialTheme.typography.bodySmall, color = c.textMuted, modifier = Modifier.padding(20.dp)) }
+            }
+        }
     }
 
     if (settings) AiSettingsSheet(onDismiss = { settings = false })
+}
+
+private fun playFound(vm: app.vesper.player.ui.MainViewModel, list: List<app.vesper.player.data.assistant.OnlineFind>, index: Int) =
+    vm.player.playOnline(list.map { app.vesper.player.playback.OnlineItem(it.result.url, it.result.title, it.result.author.substringBefore(" · "), it.result.durationSec, it.result.thumbnail) }, index)
+
+@Composable
+private fun OnlineRow(image: String?, title: String, subtitle: String, why: String, onClick: () -> Unit) {
+    val c = Vesper.colors
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val shape = Vesper.shapes.artwork
+        if (image != null && image.startsWith("http")) {
+            androidx.compose.foundation.layout.Box(Modifier.size(46.dp).clip(shape).background(c.surfaceHigh)) {
+                app.vesper.player.ui.components.RemoteImage(image, Modifier.fillMaxSize())
+            }
+        } else {
+            Artwork(image, title, modifier = Modifier.size(46.dp), isVideo = image?.startsWith("content") == true && subtitle == "У вас на телефоне", size = ArtSize.Small)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (why.isNotBlank()) Text("— $why", style = MaterialTheme.typography.labelSmall, color = c.ornament, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
 
 @Composable

@@ -74,6 +74,8 @@ class UiController(val nav: NavHostController) {
 
     /** Selected sub-tab of the Music / Videos screens (survives navigation). */
     var musicTab by mutableIntStateOf(0)
+    /** Request typed on the home screen, picked up once by the assistant screen. */
+    var assistantQuery by mutableStateOf<String?>(null)
     var videoTab by mutableIntStateOf(0)
     var playlistKind by mutableIntStateOf(0)
 
