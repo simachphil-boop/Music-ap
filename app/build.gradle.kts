@@ -16,6 +16,13 @@ android {
         versionCode = 15
         versionName = "2.2.0"
         vectorDrawables { useSupportLibrary = true }
+
+        // Cloud accounts (Firebase). The web API key is not a secret: it only names the project,
+        // access to data is controlled by Firestore rules. Set in gradle.properties or CI variables.
+        fun cfg(env: String, prop: String) =
+            (System.getenv(env)?.takeIf { it.isNotBlank() } ?: (project.findProperty(prop) as String?) ?: "").trim()
+        buildConfigField("String", "FIREBASE_API_KEY", "\"${cfg("FLOYA_FIREBASE_API_KEY", "floya.firebaseApiKey")}\"")
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${cfg("FLOYA_FIREBASE_PROJECT_ID", "floya.firebaseProjectId")}\"")
     }
 
     signingConfigs {

@@ -27,6 +27,9 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest
 
       - name: Build release APK
+        env:
+          FLOYA_FIREBASE_API_KEY: ${{ vars.FLOYA_FIREBASE_API_KEY }}
+          FLOYA_FIREBASE_PROJECT_ID: ${{ vars.FLOYA_FIREBASE_PROJECT_ID }}
         run: ./gradlew --no-daemon --stacktrace assembleRelease
 
       - name: Rename APK

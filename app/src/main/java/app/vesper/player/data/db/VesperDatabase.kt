@@ -72,7 +72,7 @@ abstract class VesperDatabase : RoomDatabase() {
         }
 
         fun build(context: Context): VesperDatabase =
-            Room.databaseBuilder(context, VesperDatabase::class.java, "vesper.db")
+            Room.databaseBuilder(context, VesperDatabase::class.java, app.vesper.player.data.account.Profile.dbName())
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
                 .build()

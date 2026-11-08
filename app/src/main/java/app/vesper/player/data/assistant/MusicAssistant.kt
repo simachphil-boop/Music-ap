@@ -31,7 +31,7 @@ data class AssistantAnswer(val suggestion: Suggestion, val byAi: Boolean, val no
  * that model, which chooses and explains; the result is always limited to tracks you own.
  */
 class MusicAssistant(context: Context) {
-    private val prefs = context.getSharedPreferences("floya_assistant", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs("floya_assistant"), Context.MODE_PRIVATE)
 
     var config: AiConfig
         get() = AiConfig(

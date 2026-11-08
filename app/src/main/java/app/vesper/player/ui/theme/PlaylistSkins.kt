@@ -137,12 +137,26 @@ object PlaylistSkins {
     fun load(context: Context) {
         if (loaded) return
         loaded = true
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val p = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs(PREFS), Context.MODE_PRIVATE)
         _choices.value = p.all.mapNotNull { (k, v) -> k.toLongOrNull()?.let { id -> (v as? String)?.let { id to it } } }.toMap()
     }
 
+    /** Current choices (loads them if needed). */
+    fun all(context: Context): Map<Long, String> {
+        load(context)
+        return _choices.value
+    }
+
+    /** Replaces every choice at once (used when the account's cloud copy is applied). */
+    fun replaceAll(context: Context, values: Map<Long, String>) {
+        loaded = true
+        context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs(PREFS), Context.MODE_PRIVATE).edit().clear()
+            .apply { values.forEach { (k, v) -> putString(k.toString(), v) } }.apply()
+        _choices.value = values
+    }
+
     fun set(context: Context, playlistId: Long, skinId: String?) {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val p = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs(PREFS), Context.MODE_PRIVATE)
         p.edit().apply { if (skinId == null) remove(playlistId.toString()) else putString(playlistId.toString(), skinId) }.apply()
         _choices.value = _choices.value.toMutableMap().apply { if (skinId == null) remove(playlistId) else put(playlistId, skinId) }
     }

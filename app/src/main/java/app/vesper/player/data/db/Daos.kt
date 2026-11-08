@@ -58,6 +58,12 @@ interface TrackDao {
 
     @Query("UPDATE tracks SET lastPlayedAt = 0, playCount = 0")
     suspend fun clearHistory()
+
+    @Query("UPDATE tracks SET favorite = 0 WHERE favorite = 1")
+    suspend fun clearFavorites()
+
+    @Query("UPDATE tracks SET playCount = MAX(playCount, :count), lastPlayedAt = MAX(lastPlayedAt, :last) WHERE id = :id")
+    suspend fun mergePlayStats(id: Long, count: Int, last: Long)
 }
 
 @Dao
@@ -100,6 +106,9 @@ interface VideoDao {
 
     @Query("UPDATE videos SET lastWatchedAt = 0, lastPositionMs = 0")
     suspend fun clearHistory()
+
+    @Query("UPDATE videos SET favorite = 0 WHERE favorite = 1")
+    suspend fun clearFavorites()
 }
 
 @Dao
@@ -152,6 +161,18 @@ abstract class PlaylistDao {
 
     @Query("UPDATE playlists SET updatedAt = :timestamp WHERE id = :id")
     abstract suspend fun touch(id: Long, timestamp: Long)
+
+    @Query("SELECT * FROM playlists ORDER BY createdAt ASC")
+    abstract suspend fun getAllPlaylists(): List<PlaylistEntity>
+
+    @Query("SELECT * FROM playlist_items ORDER BY playlistId, position ASC")
+    abstract suspend fun getAllItems(): List<PlaylistItemEntity>
+
+    @Query("DELETE FROM playlist_items")
+    abstract suspend fun deleteAllItems()
+
+    @Query("DELETE FROM playlists")
+    abstract suspend fun deleteAllPlaylistRows()
 
     @Query(
         """
@@ -258,6 +279,12 @@ interface OnlinePlaylistDao {
 
     @Query("UPDATE online_playlists SET name = :name WHERE id = :id")
     suspend fun rename(id: Long, name: String)
+
+    @Query("SELECT * FROM online_playlists ORDER BY createdAt ASC")
+    suspend fun getAll(): List<OnlinePlaylistEntity>
+
+    @Query("DELETE FROM online_playlists")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -295,4 +322,7 @@ interface ListenDao {
 
     @Query("DELETE FROM listen_log")
     suspend fun clear()
+
+    @Query("SELECT * FROM listen_log ORDER BY startedAt DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<ListenEntity>
 }

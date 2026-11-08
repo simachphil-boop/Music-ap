@@ -117,7 +117,7 @@ class Downloader(
     private val slots = kotlinx.coroutines.sync.Semaphore(2)
 
     suspend fun prepare(): Boolean = ensureEngine()
-    private val prefs = context.getSharedPreferences("floya_downloader", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs("floya_downloader"), Context.MODE_PRIVATE)
 
     /** false (default) = keep the original AAC/M4A — no re-encoding, several times faster. */
     var audioAsMp3: Boolean

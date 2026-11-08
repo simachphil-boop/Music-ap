@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -84,6 +85,23 @@ fun SettingsScreen() {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom)) {
         item { ScreenHeader("Настройки", subtitle = "Floya Music ${BuildConfig.VERSION_NAME}") }
+
+        item { Group("Аккаунт") }
+        item {
+            val session by vm.account.session.collectAsStateWithLifecycle()
+            val sync by vm.cloud.status.collectAsStateWithLifecycle()
+            val acc = session
+            SettingRow(
+                title = acc?.let { it.name.ifBlank { it.email } } ?: "Войти или зарегистрироваться",
+                subtitle = when {
+                    acc == null -> "Ваши плейлисты, избранное и история — на любом телефоне"
+                    sync.error != null -> "${acc.email} · не синхронизировано"
+                    else -> "${acc.email} · облако включено"
+                },
+                icon = Icons.Rounded.AccountCircle,
+                onClick = { ui.open(Routes.ACCOUNT) },
+            )
+        }
 
         item { Group("Оформление") }
         item {

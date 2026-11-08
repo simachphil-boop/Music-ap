@@ -106,6 +106,7 @@ object Routes {
     const val YANDEX_IMPORT = "yandex_import"
     const val MOVIES = "movies"
     const val ASSISTANT = "assistant"
+    const val ACCOUNT = "account"
     const val IMPORT_REVIEW = "import_review"
     const val ENERGY_CURVE = "energy_curve"
 

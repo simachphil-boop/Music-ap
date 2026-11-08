@@ -53,7 +53,7 @@ class WaveEngine(
     private val scope: CoroutineScope,
 ) {
     private val dao = db.wave()
-    private val prefs = context.getSharedPreferences("floya_wave", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs("floya_wave"), Context.MODE_PRIVATE)
     private val _state = MutableStateFlow(
         WaveState(mode = runCatching { WaveMode.valueOf(prefs.getString(KEY_MODE, null) ?: "") }.getOrDefault(WaveMode.ONLINE)),
     )

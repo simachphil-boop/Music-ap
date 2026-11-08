@@ -51,7 +51,7 @@ data class Movie(
  * never downloaded: each one opens in the official service.
  */
 class MovieCollection(context: Context, private val scope: CoroutineScope) {
-    private val file = File(context.filesDir, "movies.json")
+    private val file = app.vesper.player.data.account.Profile.file(context, "movies.json")
     private val lock = Mutex()
     private val enrichGate = Mutex()
     private val _movies = MutableStateFlow<List<Movie>>(emptyList())
@@ -128,42 +128,67 @@ class MovieCollection(context: Context, private val scope: CoroutineScope) {
     }
 
 
-    private fun load(): List<Movie> = runCatching {
-        val arr = JSONArray(file.readText())
-        (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Movie(
-                id = o.getLong("id"),
-                title = o.optString("title"),
-                year = o.optInt("year").takeIf { it > 0 },
-                kinopoiskId = o.optLong("kp").takeIf { it > 0 },
-                poster = o.optString("poster").ifBlank { null },
-                description = o.optString("desc").ifBlank { null },
-                wikiUrl = o.optString("wiki").ifBlank { null },
-                watchlist = o.optBoolean("wl", true),
-                favorite = o.optBoolean("fav"),
-                watched = o.optBoolean("seen"),
-                enriched = o.optBoolean("enriched"),
-                addedAt = o.optLong("at"),
-            )
+    private fun load(): List<Movie> = runCatching { fromJson(file.readText()) }.getOrDefault(emptyList())
+
+    /** The whole collection as JSON (for the account cloud copy). */
+    fun exportJson(): String = toJson(_movies.value)
+
+    /**
+     * Takes the collection from the account's cloud copy. With [merge] films missing here are added
+     * and nothing is removed; otherwise the list becomes exactly the cloud one.
+     */
+    fun importJson(json: String, merge: Boolean) {
+        val incoming = runCatching { fromJson(json) }.getOrNull() ?: return
+        _movies.update { cur ->
+            if (!merge) incoming
+            else cur + incoming.filter { m -> cur.none { it.id == m.id || (it.title.equals(m.title, true) && it.year == m.year) } }
         }
-    }.getOrDefault(emptyList())
+        save()
+        _movies.value.filter { !it.enriched }.forEach { enrichLater(it.id) }
+    }
 
     private fun save() {
         val snapshot = _movies.value
         scope.launch(Dispatchers.IO) {
             lock.withLock {
-                val arr = JSONArray()
-                snapshot.forEach { m ->
-                    arr.put(
-                        JSONObject().put("id", m.id).put("title", m.title).put("year", m.year ?: 0).put("kp", m.kinopoiskId ?: 0)
-                            .put("poster", m.poster ?: "").put("desc", m.description ?: "").put("wiki", m.wikiUrl ?: "")
-                            .put("wl", m.watchlist).put("fav", m.favorite).put("seen", m.watched).put("enriched", m.enriched).put("at", m.addedAt),
-                    )
-                }
                 val tmp = File(file.path + ".tmp")
-                tmp.writeText(arr.toString())
+                tmp.writeText(toJson(snapshot))
                 if (!tmp.renameTo(file)) { file.delete(); tmp.renameTo(file) }
+            }
+        }
+    }
+
+    companion object {
+        fun toJson(list: List<Movie>): String {
+            val arr = JSONArray()
+            list.forEach { m ->
+                arr.put(
+                    JSONObject().put("id", m.id).put("title", m.title).put("year", m.year ?: 0).put("kp", m.kinopoiskId ?: 0)
+                        .put("poster", m.poster ?: "").put("desc", m.description ?: "").put("wiki", m.wikiUrl ?: "")
+                        .put("wl", m.watchlist).put("fav", m.favorite).put("seen", m.watched).put("enriched", m.enriched).put("at", m.addedAt),
+                )
+            }
+            return arr.toString()
+        }
+
+        fun fromJson(json: String): List<Movie> {
+            val arr = JSONArray(json)
+            return (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                Movie(
+                    id = o.getLong("id"),
+                    title = o.optString("title"),
+                    year = o.optInt("year").takeIf { it > 0 },
+                    kinopoiskId = o.optLong("kp").takeIf { it > 0 },
+                    poster = o.optString("poster").ifBlank { null },
+                    description = o.optString("desc").ifBlank { null },
+                    wikiUrl = o.optString("wiki").ifBlank { null },
+                    watchlist = o.optBoolean("wl", true),
+                    favorite = o.optBoolean("fav"),
+                    watched = o.optBoolean("seen"),
+                    enriched = o.optBoolean("enriched"),
+                    addedAt = o.optLong("at"),
+                )
             }
         }
     }

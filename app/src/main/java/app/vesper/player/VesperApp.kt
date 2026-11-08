@@ -2,6 +2,13 @@ package app.vesper.player
 
 import android.app.Application
 import android.content.Context
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
+import app.vesper.player.data.account.AccountManager
+import app.vesper.player.data.account.CloudSync
+import app.vesper.player.data.account.Profile
+import app.vesper.player.data.movies.MovieCollection
 import app.vesper.player.data.LibraryRepository
 import app.vesper.player.data.db.VesperDatabase
 import app.vesper.player.data.prefs.SettingsRepository
@@ -26,7 +33,15 @@ class VesperApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Decide whose data to open (account or guest) before anything touches the database.
+        Profile.init(this)
         container = AppContainer(this)
+        container.cloud.start()
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStop(owner: LifecycleOwner) = container.cloud.flush()
+            },
+        )
     }
 }
 
@@ -51,6 +66,9 @@ class AppContainer(app: Application) {
     val webSearch = WebSearch(app, downloader)
     val wave = WaveEngine(app, database, player, downloader, mainScope)
     val editor = MediaEditor(app, library, appScope)
+    val movies = MovieCollection(app, appScope)
+    val account = AccountManager(app)
+    val cloud = CloudSync(app, database, library, movies, account, appScope)
 }
 
 val Context.appContainer: AppContainer

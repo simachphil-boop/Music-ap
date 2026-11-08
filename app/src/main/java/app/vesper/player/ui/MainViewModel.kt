@@ -106,7 +106,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Checking matches of an imported list (Yandex Music, file, link) before saving it. */
     val importReview = ImportReview(webSearch, transfer, viewModelScope)
     /** «Моя коллекция Кинопоиска». */
-    val movies = MovieCollection(app, viewModelScope)
+    val movies = container.movies
+    val account = container.account
+    val cloud = container.cloud
     /** «Подбор музыки»: local recommendations, optionally a user-connected AI model. */
     val assistant = MusicAssistant(app)
 

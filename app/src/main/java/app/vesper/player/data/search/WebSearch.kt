@@ -18,7 +18,7 @@ import java.net.URL
  */
 class WebSearch(context: Context, private val downloader: Downloader) {
 
-    private val prefs = context.getSharedPreferences("floya_search", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs("floya_search"), Context.MODE_PRIVATE)
 
     suspend fun songs(query: String): Result<List<SearchResult>> = withContext(Dispatchers.IO) {
         val q = query.trim()

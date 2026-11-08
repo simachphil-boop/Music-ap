@@ -32,7 +32,7 @@ enum class CookieSite(
 object CookieStore {
     private const val HEADER = "# Netscape HTTP Cookie File"
 
-    fun file(context: Context): File = File(context.filesDir, "cookies.txt")
+    fun file(context: Context): File = app.vesper.player.data.account.Profile.file(context, "cookies.txt")
 
     fun hasAny(context: Context): Boolean = file(context).let { it.exists() && it.length() > HEADER.length + 2 }
 

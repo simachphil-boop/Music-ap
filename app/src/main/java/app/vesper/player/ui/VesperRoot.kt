@@ -234,6 +234,7 @@ private fun VesperNavHost(nav: NavHostController) {
         }
         composable(Routes.SEARCH) { app.vesper.player.ui.screens.SearchScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.ASSISTANT) { app.vesper.player.ui.screens.AssistantScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.ACCOUNT) { app.vesper.player.ui.screens.AccountScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.MOVIES) { app.vesper.player.ui.screens.MoviesScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.YANDEX_IMPORT) { app.vesper.player.ui.screens.YandexImportScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.IMPORT_REVIEW) { app.vesper.player.ui.screens.ImportReviewScreen(onBack = { nav.popBackStack() }) }
