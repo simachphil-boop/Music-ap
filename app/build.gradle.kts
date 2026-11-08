@@ -87,6 +87,10 @@ android {
 
 
 dependencies {
+    // Unit tests for list parsing, track matching, recommendations (run in CI on every build).
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
