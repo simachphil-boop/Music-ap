@@ -33,6 +33,11 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import app.vesper.player.ui.components.PrimaryButton
+import app.vesper.player.ui.components.SecondaryButton
+import app.vesper.player.ui.components.VesperSheet
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
@@ -87,7 +92,7 @@ import app.vesper.player.ui.components.tracksCount
 import app.vesper.player.ui.theme.Vesper
 import app.vesper.player.ui.theme.themedLabel
 
-private val musicTabs = listOf("Песни", "Альбомы", "Исполнители", "Жанры", "Избранное", "Добавленные", "История")
+private val musicTabs = listOf("Песни", "Альбомы", "Исполнители", "Жанры", "Избранное", "Добавленные", "История", "Папки")
 
 val musicSortOptions = listOf(
     "Название · А → Я" to SortOrder(SortField.TITLE, true),
@@ -96,6 +101,7 @@ val musicSortOptions = listOf(
     "Сначала новые" to SortOrder(SortField.DATE_ADDED, false),
     "Сначала старые" to SortOrder(SortField.DATE_ADDED, true),
     "Длительность" to SortOrder(SortField.DURATION, false),
+    "Альбом · А → Я" to SortOrder(SortField.ALBUM, true),
 )
 
 @Composable
@@ -199,6 +205,7 @@ fun MusicScreen() {
                     tracks = lib.recentlyAdded,
                     empty = { LibraryEmpty(onImport = { importSheet = true }) },
                 )
+                7 -> FoldersTab()
                 else -> TrackListTab(
                     tracks = lib.recentlyPlayed,
                     showShuffle = false,
@@ -399,4 +406,100 @@ fun GroupType.label(): String = when (this) {
     GroupType.ALBUM -> "Альбом"
     GroupType.ARTIST -> "Исполнитель"
     GroupType.GENRE -> "Жанр"
+}
+
+/**
+ * «Умная папка»: every folder that has music, with a switch to include it in the library.
+ * Switching off only hides the tracks — files are never moved or deleted.
+ */
+@Composable
+private fun FoldersTab() {
+    val vm = LocalViewModel.current
+    val c = Vesper.colors
+    val lib by vm.library.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val bottom = app.vesper.player.ui.LocalBottomInset.current
+    val actions = LocalAppActions.current
+    var openFolder by remember { mutableStateOf<String?>(null) }
+    androidx.compose.foundation.lazy.LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = bottom + 12.dp),
+    ) {
+        item {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(
+                    "Выберите, какие папки показывать в библиотеке. Выключенная папка просто скрывается — файлы остаются на месте. Новые файлы появляются сами.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textSecondary,
+                )
+                Row(
+                    Modifier.fillMaxWidth().clickable { vm.setHideDuplicates(!settings.hideDuplicates) }.padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Скрывать дубликаты", style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+                        Text(
+                            if (settings.hideDuplicates && lib.hiddenDuplicates > 0) "Скрыто копий: ${lib.hiddenDuplicates}" else "Одна и та же песня в нескольких папках покажется один раз",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = c.textMuted,
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        settings.hideDuplicates, { vm.setHideDuplicates(it) },
+                        colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = c.accent, checkedThumbColor = c.onAccent, uncheckedTrackColor = c.surfaceHigh, uncheckedBorderColor = c.outline, uncheckedThumbColor = c.textMuted),
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SecondaryButton("Обновить", onClick = { vm.rescan() }, icon = Icons.Rounded.Refresh, modifier = Modifier.weight(1f))
+                    SecondaryButton("Добавить папку", onClick = { actions.importFolder() }, icon = Icons.Rounded.CreateNewFolder, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        if (lib.folders.isEmpty()) {
+            item { EmptyState(Icons.Rounded.Folder, "Папок с музыкой нет", "Разрешите доступ к музыке или добавьте папку вручную.") }
+        }
+        items(lib.folders.size, key = { lib.folders[it].name }) { i ->
+            val f = lib.folders[i]
+            Row(
+                Modifier.fillMaxWidth().clickable { openFolder = f.name }.padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Folder, null, tint = if (f.included) c.ornament else c.textMuted, modifier = Modifier.size(26.dp))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(f.name.trimEnd('/').substringAfterLast('/').ifBlank { f.name }, style = MaterialTheme.typography.bodyLarge, color = if (f.included) c.textPrimary else c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(f.name + " · " + tracksCount(f.count), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                androidx.compose.material3.Switch(
+                    f.included, { vm.setFolderIncluded(f.name, it) },
+                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = c.accent, checkedThumbColor = c.onAccent, uncheckedTrackColor = c.surfaceHigh, uncheckedBorderColor = c.outline, uncheckedThumbColor = c.textMuted),
+                )
+            }
+        }
+    }
+    openFolder?.let { name ->
+        val tracks = lib.sortedTracks.filter { it.folder.ifBlank { "Без папки" } == name }
+        VesperSheet(onDismiss = { openFolder = null }) { _ ->
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Text(name.trimEnd('/').substringAfterLast('/').ifBlank { name }, style = MaterialTheme.typography.headlineSmall, color = c.textPrimary)
+                Text(if (tracks.isEmpty()) "Папка скрыта — включите её, чтобы слушать" else tracksCount(tracks.size), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                Spacer(Modifier.height(10.dp))
+                if (tracks.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PrimaryButton("Слушать", onClick = { vm.player.playTracks(tracks, 0, shuffle = false); openFolder = null }, icon = Icons.Rounded.PlayArrow, modifier = Modifier.weight(1f))
+                        SecondaryButton("В плейлист", onClick = {
+                            vm.createPlaylist(name.trimEnd('/').substringAfterLast('/').ifBlank { "Папка" }, app.vesper.player.data.db.PlaylistKind.MUSIC, tracks.map { it.id })
+                            openFolder = null
+                        }, icon = Icons.Rounded.PlaylistAdd, modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                tracks.take(60).forEach { t ->
+                    Text("${t.artist} — ${t.title}", style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = 3.dp))
+                }
+                if (tracks.size > 60) Text("и ещё ${tracks.size - 60}…", style = MaterialTheme.typography.bodySmall, color = c.textMuted)
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
 }

@@ -1,5 +1,14 @@
 package app.vesper.player.ui.screens
 
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
+import app.vesper.player.ui.components.PrimaryButton
+import app.vesper.player.ui.components.SecondaryButton
+import app.vesper.player.ui.components.VesperTextField
+import app.vesper.player.ui.components.VesperSheet
+import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Box
@@ -108,8 +117,15 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
     val previews by vm.playlistPreview.collectAsStateWithLifecycle()
     val lib by vm.library.collectAsStateWithLifecycle()
     val vids by vm.videos.collectAsStateWithLifecycle()
-    val playlists = all.filter { it.kind == kind }
     val context = androidx.compose.ui.platform.LocalContext.current
+    remember { app.vesper.player.data.prefs.PlaylistFolders.load(context) }
+    val folderMap by app.vesper.player.data.prefs.PlaylistFolders.map.collectAsStateWithLifecycle()
+    val ofKind = all.filter { it.kind == kind }
+    val folderNames = ofKind.mapNotNull { folderMap[it.id] }.distinct().sorted()
+    var folder by remember { mutableStateOf<String?>(null) }
+    if (folder != null && folder !in folderNames) folder = null
+    val playlists = if (folder == null) ofKind else ofKind.filter { folderMap[it.id] == folder }
+    var moving by remember { mutableStateOf<PlaylistSummary?>(null) }
     remember { app.vesper.player.ui.theme.PlaylistSkins.load(context) }
     val skins by app.vesper.player.ui.theme.PlaylistSkins.choices.collectAsStateWithLifecycle()
     var options by remember { mutableStateOf<PlaylistSummary?>(null) }
@@ -118,6 +134,11 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
     var creating by remember { mutableStateOf(false) }
     var theming by remember { mutableStateOf<PlaylistSummary?>(null) }
 
+    if (folderNames.isNotEmpty()) {
+        // Own folders: tap to show only the playlists inside.
+        ChipRow(listOf("Все") + folderNames.map { "📁 $it" }, if (folder == null) 0 else folderNames.indexOf(folder) + 1, onSelect = { folder = if (it == 0) null else folderNames[it - 1] })
+        Spacer(Modifier.height(8.dp))
+    }
     if (playlists.isEmpty()) {
         EmptyState(
             icon = if (kind == PlaylistKind.MUSIC) Icons.Rounded.QueueMusic else Icons.Rounded.VideoLibrary,
@@ -195,6 +216,7 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
                     })
                 }
                 add(SheetAction(Icons.Rounded.Palette, "Тема плейлиста") { theming = p })
+                add(SheetAction(Icons.Rounded.CreateNewFolder, if (folderMap[p.id] != null) "Папка: ${folderMap[p.id]}" else "Положить в папку") { moving = p })
                 add(SheetAction(Icons.Rounded.Edit, "Переименовать") { renaming = p })
                 add(SheetAction(Icons.Rounded.Delete, "Удалить", destructive = true) { deleting = p })
             },
@@ -203,6 +225,16 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
     theming?.let { p ->
         SkinPickerSheet(current = skins[p.id], onDismiss = { theming = null }) {
             app.vesper.player.ui.theme.PlaylistSkins.set(context, p.id, it)
+        }
+    }
+    moving?.let { p ->
+        FolderPickerSheet(
+            current = folderMap[p.id],
+            existing = (all.mapNotNull { folderMap[it.id] }).distinct().sorted(),
+            onDismiss = { moving = null },
+        ) { name ->
+            app.vesper.player.data.prefs.PlaylistFolders.set(context, p.id, name)
+            moving = null
         }
     }
     renaming?.let { p ->
@@ -235,5 +267,36 @@ fun PlaylistGrid(kind: Int, bottom: Dp) {
                 vm.createPlaylist(name, kind) { id -> ui.openPlaylist(id) }
             },
         )
+    }
+}
+
+@Composable
+private fun FolderPickerSheet(current: String?, existing: List<String>, onDismiss: () -> Unit, onPick: (String?) -> Unit) {
+    val c = Vesper.colors
+    var name by remember { mutableStateOf("") }
+    VesperSheet(onDismiss) { _ ->
+        Column(Modifier.padding(horizontal = 24.dp)) {
+            Text("Папка для плейлиста", style = MaterialTheme.typography.headlineSmall, color = c.textPrimary)
+            Text("Папки помогают разложить плейлисты: «Тренировки», «Для дороги», «Детское»…", style = MaterialTheme.typography.bodySmall, color = c.textMuted)
+            Spacer(Modifier.height(12.dp))
+            existing.forEach { f ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onPick(f) }.padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.CreateNewFolder, null, tint = if (f == current) c.accentBright else c.ornament)
+                    Spacer(Modifier.width(12.dp))
+                    Text(f, style = MaterialTheme.typography.bodyLarge, color = if (f == current) c.accentBright else c.textPrimary)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            VesperTextField(name, { name = it }, "Новая папка")
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (current != null) SecondaryButton("Убрать из папки", onClick = { onPick(null) }, modifier = Modifier.weight(1f))
+                PrimaryButton("Создать и положить", onClick = { if (name.isNotBlank()) onPick(name) }, modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(16.dp))
+        }
     }
 }

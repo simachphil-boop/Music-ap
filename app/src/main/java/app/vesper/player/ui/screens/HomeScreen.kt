@@ -30,6 +30,8 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.Icon
@@ -125,7 +127,7 @@ fun HomeScreen() {
         }
         item(key = "wave") { Appear(seen, "wave", 2) { WaveSection() }}
         if (lib.allTracks.isNotEmpty()) {
-            item(key = "discover") { Appear(seen, "discover", 3) {
+            item(key = "discover") { Appear(seen, "discover", 3) { Column {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -144,6 +146,26 @@ fun HomeScreen() {
                         modifier = Modifier.weight(1f),
                         onClick = { ui.open(Routes.ENERGY_CURVE) },
                     )
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    DiscoverCard(
+                        icon = Icons.Rounded.AutoAwesome,
+                        title = "Подбор музыки",
+                        subtitle = "«Для прогулки», «похожее на этот трек» — с объяснениями",
+                        modifier = Modifier.weight(1f),
+                        onClick = { ui.open(Routes.ASSISTANT) },
+                    )
+                    DiscoverCard(
+                        icon = Icons.Rounded.SwapHoriz,
+                        title = "Из Яндекс Музыки",
+                        subtitle = "Перенести плейлисты и проверить совпадения",
+                        modifier = Modifier.weight(1f),
+                        onClick = { ui.open(Routes.YANDEX_IMPORT) },
+                    )
+                }
                 }
             }}
         }

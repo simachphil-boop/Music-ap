@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import app.vesper.player.appContainer
 import app.vesper.player.playback.AudioEffects
 import app.vesper.player.data.movies.MovieCollection
+import app.vesper.player.data.assistant.MusicAssistant
+import app.vesper.player.data.media.SmartLibrary
 import app.vesper.player.data.transfer.ImportReview
 import app.vesper.player.data.LibraryRepository
 import app.vesper.player.data.db.PlaylistEntity
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -48,6 +51,8 @@ data class TrackGroup(
     val totalDurationMs: Long get() = tracks.sumOf { it.durationMs }
 }
 
+data class FolderInfo(val name: String, val count: Int, val included: Boolean)
+
 data class LibraryState(
     val loaded: Boolean = false,
     val allTracks: List<TrackEntity> = emptyList(),
@@ -59,6 +64,8 @@ data class LibraryState(
     val recentlyAdded: List<TrackEntity> = emptyList(),
     val recentlyPlayed: List<TrackEntity> = emptyList(),
     val trackById: Map<Long, TrackEntity> = emptyMap(),
+    val folders: List<FolderInfo> = emptyList(),
+    val hiddenDuplicates: Int = 0,
 )
 
 data class VideoState(
@@ -100,6 +107,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val importReview = ImportReview(webSearch, transfer, viewModelScope)
     /** «Моя коллекция Кинопоиска». */
     val movies = MovieCollection(app, viewModelScope)
+    /** «Подбор музыки»: local recommendations, optionally a user-connected AI model. */
+    val assistant = MusicAssistant(app)
 
     /** Link received via "Share → Floya Music"; consumed by the downloads screen. */
     val sharedUrl = MutableStateFlow<String?>(null)
@@ -124,9 +133,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _permissionVersion = MutableStateFlow(0)
     val permissionVersion: StateFlow<Int> = _permissionVersion.asStateFlow()
 
-    val library: StateFlow<LibraryState> = combine(repo.tracks, settingsRepo.settings.map { it.musicSort }) { tracks, sort ->
-        buildLibrary(tracks, sort)
+    val library: StateFlow<LibraryState> = combine(
+        repo.tracks,
+        settingsRepo.settings.map { Triple(it.musicSort, it.excludedFolders, it.hideDuplicates) }.distinctUntilChanged(),
+    ) { tracks, (sort, excluded, dedupe) ->
+        val folders = tracks.groupBy { it.folder.ifBlank { "Без папки" } }
+            .map { (name, list) -> FolderInfo(name, list.size, name !in excluded) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val visible = tracks.filter { it.folder.ifBlank { "Без папки" } !in excluded }
+        val shown = if (dedupe) SmartLibrary.dedupe(visible) else visible
+        // trackById keeps every track, so playlists and the queue still find hidden copies.
+        buildLibrary(shown, sort).copy(folders = folders, hiddenDuplicates = visible.size - shown.size, trackById = tracks.associateBy { it.id })
     }.stateIn(viewModelScope, SharingStarted.Eagerly, LibraryState())
+
+    fun setFolderIncluded(folder: String, included: Boolean) = viewModelScope.launch { settingsRepo.setFolderIncluded(folder, included) }
+    override fun onCleared() {
+        runCatching { getApplication<Application>().contentResolver.unregisterContentObserver(mediaObserver) }
+        super.onCleared()
+    }
+
+    fun setHideDuplicates(v: Boolean) = viewModelScope.launch { settingsRepo.setHideDuplicates(v) }
+
+    /** New music copied to the phone shows up by itself: MediaStore changes trigger a quiet rescan. */
+    private val mediaObserver = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+        private var pending: kotlinx.coroutines.Job? = null
+        override fun onChange(selfChange: Boolean) {
+            pending?.cancel()
+            pending = viewModelScope.launch {
+                kotlinx.coroutines.delay(4000) // a batch of files arrives as many events — wait for quiet
+                if (repo.hasAudioPermission()) rescan(silent = true)
+            }
+        }
+    }
+
+    init {
+        runCatching {
+            app.contentResolver.registerContentObserver(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, mediaObserver)
+        }
+    }
 
     val videos: StateFlow<VideoState> = combine(repo.videos, settingsRepo.settings.map { it.videoSort }) { list, sort ->
         VideoState(

@@ -390,13 +390,16 @@ class LibraryRepository(
                     .thenBy { it.trackNumber }
                 SortField.DATE_ADDED -> compareBy { it.dateAdded }
                 SortField.DURATION -> compareBy { it.durationMs }
+                SortField.ALBUM -> compareBy<TrackEntity, String>(String.CASE_INSENSITIVE_ORDER) { it.album }
+                    .thenBy { it.trackNumber }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title }
             }
             return list.sortedWith(if (order.ascending) cmp else cmp.reversed())
         }
 
         fun sortVideos(list: List<VideoEntity>, order: SortOrder): List<VideoEntity> {
             val cmp: Comparator<VideoEntity> = when (order.field) {
-                SortField.TITLE, SortField.ARTIST -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }
+                SortField.TITLE, SortField.ARTIST, SortField.ALBUM -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.title }
                 SortField.DATE_ADDED -> compareBy { it.dateAdded }
                 SortField.DURATION -> compareBy { it.durationMs }
             }

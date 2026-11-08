@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "vesper_settings")
 
-enum class SortField { TITLE, ARTIST, DATE_ADDED, DURATION }
+enum class SortField { TITLE, ARTIST, DATE_ADDED, DURATION, ALBUM }
 
 data class SortOrder(val field: SortField = SortField.TITLE, val ascending: Boolean = true) {
     fun encode(): String = "${field.name}:${if (ascending) 1 else 0}"
@@ -45,6 +45,10 @@ data class AppSettings(
     val themeId: String = "gothic",
     /** 0 = always the chosen theme, 1 = follow the system (light by day, chosen dark theme at night), 2 = always light. */
     val themeMode: Int = 0,
+    /** Folders (as shown in the "Папки" tab) the user switched off — their tracks are hidden, never deleted. */
+    val excludedFolders: Set<String> = emptySet(),
+    /** Show one copy when the same song exists several times (same title, artist, length). */
+    val hideDuplicates: Boolean = true,
     val musicSort: SortOrder = SortOrder(),
     val videoSort: SortOrder = SortOrder(SortField.DATE_ADDED, ascending = false),
     val pauseOnDisconnect: Boolean = true,
@@ -66,6 +70,8 @@ class SettingsRepository(private val context: Context) {
     private object Keys {
         val theme = stringPreferencesKey("theme")
         val themeMode = intPreferencesKey("theme_mode")
+        val excludedFolders = androidx.datastore.preferences.core.stringSetPreferencesKey("excluded_folders")
+        val hideDuplicates = booleanPreferencesKey("hide_duplicates")
         val musicSort = stringPreferencesKey("music_sort")
         val videoSort = stringPreferencesKey("video_sort")
         val pauseOnDisconnect = booleanPreferencesKey("pause_on_disconnect")
@@ -93,6 +99,8 @@ class SettingsRepository(private val context: Context) {
         AppSettings(
             themeId = p[Keys.theme] ?: "gothic",
             themeMode = p[Keys.themeMode] ?: 0,
+            excludedFolders = p[Keys.excludedFolders] ?: emptySet(),
+            hideDuplicates = p[Keys.hideDuplicates] ?: true,
             musicSort = SortOrder.decode(p[Keys.musicSort], SortOrder()),
             videoSort = SortOrder.decode(p[Keys.videoSort], SortOrder(SortField.DATE_ADDED, false)),
             pauseOnDisconnect = p[Keys.pauseOnDisconnect] ?: true,
@@ -120,6 +128,11 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setTheme(id: String) = context.dataStore.edit { it[Keys.theme] = id }
     suspend fun setThemeMode(mode: Int) = context.dataStore.edit { it[Keys.themeMode] = mode }
+    suspend fun setFolderIncluded(folder: String, included: Boolean) = context.dataStore.edit {
+        val cur = it[Keys.excludedFolders] ?: emptySet()
+        it[Keys.excludedFolders] = if (included) cur - folder else cur + folder
+    }
+    suspend fun setHideDuplicates(v: Boolean) = context.dataStore.edit { it[Keys.hideDuplicates] = v }
     suspend fun setMusicSort(order: SortOrder) = context.dataStore.edit { it[Keys.musicSort] = order.encode() }
     suspend fun setVideoSort(order: SortOrder) = context.dataStore.edit { it[Keys.videoSort] = order.encode() }
     suspend fun setPauseOnDisconnect(v: Boolean) = context.dataStore.edit { it[Keys.pauseOnDisconnect] = v }
