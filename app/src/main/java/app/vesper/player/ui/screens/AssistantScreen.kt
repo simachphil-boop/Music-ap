@@ -209,6 +209,7 @@ fun AssistantScreen(onBack: () -> Unit) {
             }
         }
         found?.let { d ->
+            d.screen?.let { title -> item { ScreenCard(title) } }
             d.note?.let { n -> item { Text(n, style = MaterialTheme.typography.bodySmall, color = c.danger, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) } }
             if (d.songs.isNotEmpty()) {
                 item {
@@ -217,6 +218,21 @@ fun AssistantScreen(onBack: () -> Unit) {
                             OverlineText(if (d.byAi) "Советует ИИ · онлайн" else "Новое · онлайн", color = c.ornament)
                             Text(d.title.ifBlank { "Новые песни" }, style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
                         }
+                        PressableIcon(Icons.Rounded.PlaylistAdd, "Сохранить как плейлист", onClick = {
+                            scope.launch {
+                                val name = d.title.ifBlank { lastQuery }.take(60)
+                                vm.transfer.save(
+                                    app.vesper.player.data.transfer.TransferredPlaylist(
+                                        name = name,
+                                        source = "assistant",
+                                        sourceUrl = "",
+                                        coverUrl = d.songs.firstNotNullOfOrNull { it.result.thumbnail },
+                                        items = d.songs.map { app.vesper.player.playback.OnlineItem(it.result.url, it.result.title, it.result.author.substringBefore(" · "), it.result.durationSec, it.result.thumbnail) },
+                                    ),
+                                )
+                                vm.message("Плейлист «$name» сохранён — ${d.songs.size} песен, он в «Плейлистах»")
+                            }
+                        })
                         PressableIcon(Icons.Rounded.PlayArrow, "Слушать все", onClick = { playFound(vm, d.songs, 0) }, tint = c.accentBright)
                     }
                 }
@@ -245,6 +261,33 @@ fun AssistantScreen(onBack: () -> Unit) {
     }
 
     if (settings) AiSettingsSheet(onDismiss = { settings = false })
+}
+
+/** A series or film was asked for: offer the legal route — the Kinopoisk collection. */
+@Composable
+private fun ScreenCard(title: String) {
+    val vm = LocalViewModel.current
+    val ui = app.vesper.player.ui.LocalUi.current
+    val c = Vesper.colors
+    Column(
+        Modifier.padding(horizontal = 20.dp, vertical = 10.dp).fillMaxWidth()
+            .clip(Vesper.shapes.medium).background(c.surfaceHigh).padding(14.dp),
+    ) {
+        OverlineText("Сериалы и фильмы", color = c.ornament)
+        Text("«$title»", style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
+        Text(
+            "Серии из интернета Floya не собирает: на YouTube это были бы пиратские копии. " +
+                "Добавьте в «Мою коллекцию Кинопоиска» — там постер, описание и кнопка «Смотреть» в официальном сервисе. Ниже — трейлеры и музыка.",
+            style = MaterialTheme.typography.bodySmall,
+            color = c.textSecondary,
+        )
+        Spacer(Modifier.height(10.dp))
+        PrimaryButton("В коллекцию Кинопоиска", onClick = {
+            val added = vm.movies.import(listOf(app.vesper.player.data.movies.ImportedMovie(title)))
+            vm.message(if (added > 0) "«$title» добавлен в коллекцию" else "«$title» уже в коллекции")
+            ui.open(app.vesper.player.ui.Routes.MOVIES)
+        }, icon = Icons.Rounded.PlaylistAdd, modifier = Modifier.fillMaxWidth())
+    }
 }
 
 private fun playFound(vm: app.vesper.player.ui.MainViewModel, list: List<app.vesper.player.data.assistant.OnlineFind>, index: Int) =

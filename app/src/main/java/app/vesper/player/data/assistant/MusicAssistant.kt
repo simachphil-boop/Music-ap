@@ -41,6 +41,8 @@ data class Discovery(
     val localVideos: List<VideoEntity>,
     val byAi: Boolean,
     val note: String? = null,
+    /** Set when the request is about a series or film: its title (for the Kinopoisk collection). */
+    val screen: String? = null,
 )
 
 data class AssistantAnswer(val suggestion: Suggestion, val byAi: Boolean, val note: String? = null)
@@ -230,7 +232,7 @@ class MusicAssistant(context: Context) {
                     async { web.videos(vq.optString(i)).getOrNull().orEmpty().take(3) }
                 }.awaitAll().flatten().distinctBy { it.url }
                 if (songs.isNotEmpty() || vids.isNotEmpty()) {
-                    return@coroutineScope Discovery(json.optString("title"), songs, vids, localVideos, byAi = true)
+                    return@coroutineScope Discovery(json.optString("title"), songs, vids, localVideos, byAi = true, screen = screenTitle(text))
                 }
             }
             val note = ai.exceptionOrNull()?.let { "ИИ недоступен (${it.message?.take(100)}) — показан обычный поиск" }
@@ -246,14 +248,37 @@ class MusicAssistant(context: Context) {
         localVideos: List<VideoEntity>,
         notOwned: (SearchResult) -> Boolean,
     ): Discovery = coroutineScope {
+        val screen = screenTitle(text)
         val similar = currentTrack != null && listOf("похож", "этот трек", "такое же", "в том же духе").any { it in text.lowercase() }
-        val songQuery = if (similar) currentTrack!!.artist else text
-        val videoQuery = if (similar) "${currentTrack!!.artist} клип" else text
-        val songs = async { web.songs(songQuery).getOrNull().orEmpty() }
+        val clean = cleanRequest(text).ifBlank { text }
+        val songQueries = when {
+            screen != null -> listOf("$screen soundtrack", "$screen OST")
+            similar -> listOf(currentTrack!!.artist)
+            else -> listOf(clean, "$clean music")
+        }
+        val videoQuery = when {
+            screen != null -> "$screen трейлер"
+            similar -> "${currentTrack!!.artist} клип"
+            else -> clean
+        }
+        val songs = songQueries.map { q -> async { web.songs(q).getOrNull().orEmpty() } }
         val vids = async { web.videos(videoQuery).getOrNull().orEmpty() }
-        val list = songs.await().filter(notOwned).filter { !similar || it.title != currentTrack!!.title }.take(15)
+        val list = songs.awaitAll().flatten().distinctBy { it.url }.filter(notOwned)
+            .filter { !similar || it.title != currentTrack!!.title }
+            .take(if (wantsPlaylist(text)) 40 else 20)
             .map { OnlineFind(it, if (similar) "того же исполнителя" else "") }
-        Discovery("", list, vids.await().take(8), localVideos, byAi = false)
+        Discovery(
+            title = when {
+                screen != null -> "Музыка из «$screen»"
+                similar -> "Похожее на ${currentTrack!!.artist}"
+                else -> clean.replaceFirstChar { it.uppercase() }
+            },
+            songs = list,
+            onlineVideos = vids.await().take(8),
+            localVideos = localVideos,
+            byAi = false,
+            screen = screen,
+        )
     }
 
     private val stopWords = setOf("музыка", "музыку", "песни", "песню", "видео", "подбери", "хочу", "что", "нибудь", "какую", "какое", "для", "послушать", "посмотреть", "сделай", "составь", "плейлист")
@@ -275,6 +300,31 @@ class MusicAssistant(context: Context) {
             } finally {
                 conn.disconnect()
             }
+        }
+    }
+
+    companion object {
+        private val command = Regex(
+            """^\s*(пожалуйста\s+)?(собери|составь|сделай|подбери|найди|включи|поставь|дай|хочу)\s+(мне\s+)?""" +
+                """((плейлист|подборку|подборка|список|музыку|песни|треки)\s*)?[,:]?\s*((со|с|из|на)\s+)?""",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /** "собери мне плейлист со спокойным джазом для сна" → "спокойным джазом для сна". */
+        fun cleanRequest(text: String): String =
+            text.trim().replace(command, "").replace(Regex("""^(всеми|всех|все)\s+""", RegexOption.IGNORE_CASE), "").trim().trimEnd('.', '!', '?')
+
+        fun wantsPlaylist(text: String) = Regex("плейлист|подборк|собери|составь", RegexOption.IGNORE_CASE).containsMatchIn(text)
+
+        /** Title of a series/film the request is about, or null ("...все серии сериала Prison Break" → "Prison Break"). */
+        fun screenTitle(text: String): String? {
+            if (!Regex("сериал|серии|серий|сезон|фильм|кино|мультфильм|аниме", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+            val after = Regex("""(?:сериала|сериал|фильма|фильм|мультфильма|мультфильм|аниме)\s+[«"']?([^«»"',.!?]+)""", RegexOption.IGNORE_CASE)
+                .find(text)?.groupValues?.get(1)?.trim()
+            val t = after ?: cleanRequest(text)
+                .replace(Regex("""(со\s+)?(всеми|все|всех)?\s*(сериями|серии|серий|сезонами|сезоны|сезонов|и)\b""", RegexOption.IGNORE_CASE), " ")
+                .replace(Regex("""\s+"""), " ").trim()
+            return t.takeIf { it.length >= 2 }
         }
     }
 }
