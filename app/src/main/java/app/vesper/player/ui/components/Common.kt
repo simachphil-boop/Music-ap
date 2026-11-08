@@ -127,7 +127,7 @@ fun SectionHeader(
     val c = Vesper.colors
     val ornament = Vesper.theme.ornament
     Row(
-        modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 26.dp, bottom = 12.dp),
+        modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when (ornament) {

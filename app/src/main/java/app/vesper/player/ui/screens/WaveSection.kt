@@ -105,9 +105,9 @@ fun WaveSection() {
         Box(
             Modifier
                 .padding(horizontal = 20.dp)
-                .padding(top = 18.dp)
+                .padding(top = 12.dp)
                 .fillMaxWidth()
-                .height(214.dp)
+                .height(140.dp)
                 .clip(Vesper.shapes.large)
                 .background(Brush.verticalGradient(listOf(c.surfaceHigh, c.surface)))
                 .border(1.dp, c.outline, Vesper.shapes.large)
@@ -116,7 +116,7 @@ fun WaveSection() {
                 },
         ) {
             WaveCanvas(Modifier.fillMaxSize(), active = playing, profile = wave.nowProfile)
-            Column(Modifier.fillMaxSize().padding(20.dp)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
                 OverlineText(if (wave.active) "Волна играет" else "Волна", color = c.ornament)
                 AnimatedContent(
                     targetState = activeVibe ?: Vibes.myWave,
@@ -124,10 +124,10 @@ fun WaveSection() {
                     label = "waveTitle",
                 ) { v ->
                     Column {
-                        Text(v.title, style = MaterialTheme.typography.headlineLarge, color = c.textPrimary, maxLines = 1)
+                        Text(v.title, style = MaterialTheme.typography.titleLarge, color = c.textPrimary, maxLines = 1)
                         Text(
                             if (wave.active && player.current != null) "${player.current?.title} — ${player.current?.artist}" else v.subtitle,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             color = c.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -139,9 +139,9 @@ fun WaveSection() {
                     PlayPauseButton(
                         isPlaying = playing,
                         onClick = { if (wave.active) vm.player.togglePlayPause() else vm.startWave(Vibes.myWave) },
-                        size = 56.dp,
+                        size = 42.dp,
                     )
-                    Spacer(Modifier.width(14.dp))
+                    Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
                             if (wave.active) "Бесконечный поток" else "Слушать волну",
@@ -164,7 +164,7 @@ fun WaveSection() {
         }
 
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -172,17 +172,6 @@ fun WaveSection() {
                 app.vesper.player.ui.components.VesperChip(m.title, wave.mode == m, onClick = { vm.wave.setMode(m) })
             }
         }
-        Text(
-            if (wave.mode == app.vesper.player.data.wave.WaveMode.ONLINE) {
-                "Музыка из интернета под настроение. Понравился трек — ❤ или скачайте его кнопкой ↓ в плеере."
-            } else {
-                "Только треки, которые вы скачали через Floya Music."
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = c.textMuted,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp),
-        )
-
         if (wave.mode == app.vesper.player.data.wave.WaveMode.DOWNLOADS && analysis.total > 0 && !analysis.complete) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 10.dp)) {
                 Text(
@@ -197,20 +186,23 @@ fun WaveSection() {
             }
         }
 
-        listOf(VibeGroup.MOOD, VibeGroup.ACTIVITY, VibeGroup.CHARACTER).forEach { group ->
-            OverlineText(group.title, modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(Vibes.all.filter { it.group == group && it.id != Vibes.myWave.id }, key = { it.id }) { vibe ->
-                    VibeTile(
-                        vibe = vibe,
-                        selected = activeVibe?.id == vibe.id,
-                        loading = wave.starting,
-                        onClick = { vm.startWave(vibe) },
-                    )
-                }
+        // All moods/activities in one compact row instead of three tall ones.
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            items(
+                Vibes.all.filter { it.id != Vibes.myWave.id }
+                    .sortedBy { listOf(VibeGroup.MOOD, VibeGroup.ACTIVITY, VibeGroup.CHARACTER).indexOf(it.group) },
+                key = { it.id },
+            ) { vibe ->
+                VibeTile(
+                    vibe = vibe,
+                    selected = activeVibe?.id == vibe.id,
+                    loading = wave.starting,
+                    onClick = { vm.startWave(vibe) },
+                )
             }
         }
     }
@@ -221,19 +213,18 @@ private fun VibeTile(vibe: Vibe, selected: Boolean, loading: Boolean, onClick: (
     val c = Vesper.colors
     val bg by animateColorAsState(if (selected) c.highlight else c.surface, tween(250), label = "vibeBg")
     val border by animateColorAsState(if (selected) c.accentBright else c.outline, tween(250), label = "vibeBorder")
-    Column(
+    Row(
         Modifier
-            .width(118.dp)
-            .clip(Vesper.shapes.medium)
+            .clip(Vesper.shapes.chip)
             .background(bg)
-            .border(1.dp, border, Vesper.shapes.medium)
+            .border(1.dp, border, Vesper.shapes.chip)
             .clickable(enabled = !loading, onClick = onClick)
-            .padding(12.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(vibeIcon(vibe), null, tint = if (selected) c.accentBright else c.ornament, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(10.dp))
-        Text(vibe.title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1)
-        Text(vibe.subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Icon(vibeIcon(vibe), null, tint = if (selected) c.accentBright else c.ornament, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(vibe.title, style = MaterialTheme.typography.labelLarge, color = c.textPrimary, maxLines = 1)
     }
 }
 

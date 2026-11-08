@@ -109,66 +109,47 @@ fun HomeScreen() {
             Row(
                 Modifier
                     .padding(horizontal = 20.dp)
-                    .padding(top = 14.dp)
+                    .padding(top = 10.dp)
                     .fillMaxWidth()
                     .clip(Vesper.shapes.medium)
                     .background(c.surfaceHigh)
                     .clickable { ui.open(Routes.SEARCH) }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.Search, null, tint = c.textMuted, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(12.dp))
-                Text("Найти песню, исполнителя или видео", style = MaterialTheme.typography.bodyLarge, color = c.textMuted)
+                Text("Песня, исполнитель или видео", style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
             }
         }}
         if (!notificationsOn) {
             item(key = "notif") { Appear(seen, "notif", 2) { NotificationsBanner() } }
         }
-        item(key = "wave") { Appear(seen, "wave", 2) { WaveSection() }}
         if (lib.allTracks.isNotEmpty()) {
-            item(key = "discover") { Appear(seen, "discover", 3) { Column {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+            item(key = "shortcuts") { Appear(seen, "shortcuts", 3) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 12.dp),
                 ) {
-                    DiscoverCard(
-                        icon = Icons.Rounded.Whatshot,
-                        title = "Лента припевов",
-                        subtitle = "Листай свою музыку по самым ярким моментам",
-                        modifier = Modifier.weight(1f),
-                        onClick = { ui.open(Routes.CHORUS_FEED) },
-                    )
-                    DiscoverCard(
-                        icon = Icons.Rounded.ShowChart,
-                        title = "Кривая энергии",
-                        subtitle = "Нарисуй настроение — плейлист пойдёт по линии",
-                        modifier = Modifier.weight(1f),
-                        onClick = { ui.open(Routes.ENERGY_CURVE) },
-                    )
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    DiscoverCard(
-                        icon = Icons.Rounded.AutoAwesome,
-                        title = "Подбор музыки",
-                        subtitle = "«Для прогулки», «похожее на этот трек» — с объяснениями",
-                        modifier = Modifier.weight(1f),
-                        onClick = { ui.open(Routes.ASSISTANT) },
-                    )
-                    DiscoverCard(
-                        icon = Icons.Rounded.SwapHoriz,
-                        title = "Из Яндекс Музыки",
-                        subtitle = "Перенести плейлисты и проверить совпадения",
-                        modifier = Modifier.weight(1f),
-                        onClick = { ui.open(Routes.YANDEX_IMPORT) },
-                    )
-                }
+                    item { Shortcut(Icons.Rounded.Shuffle, "Перемешать") { vm.player.playTracks(lib.allTracks, shuffle = true) } }
+                    item {
+                        Shortcut(Icons.Rounded.Favorite, "Избранное") {
+                            if (lib.favorites.isEmpty()) vm.message("В избранном пока пусто — отмечайте треки сердцем")
+                            else vm.player.playTracks(lib.favorites, 0, shuffle = false)
+                        }
+                    }
+                    item { Shortcut(Icons.Rounded.AutoAwesome, "Подбор") { ui.open(Routes.ASSISTANT) } }
+                    item { Shortcut(Icons.Rounded.Whatshot, "Припевы") { ui.open(Routes.CHORUS_FEED) } }
+                    item { Shortcut(Icons.Rounded.ShowChart, "Энергия") { ui.open(Routes.ENERGY_CURVE) } }
+                    item { Shortcut(Icons.Rounded.SwapHoriz, "Из Яндекса") { ui.open(Routes.YANDEX_IMPORT) } }
+                    item { Shortcut(Icons.Rounded.Download, "По ссылке") { ui.goToTab(Routes.DOWNLOADS) } }
+                    item { Shortcut(androidx.compose.material.icons.Icons.Rounded.Movie, "Кино") { ui.open(Routes.MOVIES) } }
                 }
             }}
         }
+
+        item(key = "wave") { Appear(seen, "wave", 2) { WaveSection() }}
 
         if (libraryEmpty) {
             item(key = "empty") { Appear(seen, "empty", 4) {
@@ -206,22 +187,6 @@ fun HomeScreen() {
         if (player.current != null && player.queueOwner != app.vesper.player.data.wave.WaveEngine.OWNER) {
             item(key = "now") { Appear(seen, "now", 5) { NowPlayingCard(onOpen = { ui.playerExpanded = true }) }}
         }
-
-        item(key = "quick") { Appear(seen, "quick", 6) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                QuickAction(Icons.Rounded.Shuffle, "Перемешать всё", Modifier.weight(1f)) {
-                    vm.player.playTracks(lib.allTracks, shuffle = true)
-                }
-                QuickAction(Icons.Rounded.Favorite, "Избранное", Modifier.weight(1f)) {
-                    if (lib.favorites.isEmpty()) vm.message("В избранном пока пусто — отмечайте треки сердцем")
-                    else vm.player.playTracks(lib.favorites, 0, shuffle = false)
-                }
-                QuickAction(Icons.Rounded.Download, "По ссылке", Modifier.weight(1f)) { ui.goToTab(Routes.DOWNLOADS) }
-            }
-        }}
 
         if (lib.recentlyPlayed.isNotEmpty()) {
             item(key = "recentHeader") { Appear(seen, "recentHeader", 7) { SectionHeader("Недавно прослушанные", actionLabel = "Все", onAction = { ui.musicTab = 6; ui.goToTab(Routes.MUSIC) }) }}
@@ -338,47 +303,77 @@ fun HomeScreen() {
 
 @Composable
 private fun HomeHeader(trackCount: Int, videoCount: Int) {
+    val vm = LocalViewModel.current
+    val ui = LocalUi.current
     val c = Vesper.colors
     val ornament = Vesper.theme.ornament
-    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 20.dp, top = 18.dp)) {
+    val session by vm.account.session.collectAsStateWithLifecycle()
+    val sync by vm.cloud.status.collectAsStateWithLifecycle()
+    val name = session?.let { s -> s.name.ifBlank { s.email.substringBefore('@') } }
+    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, end = 12.dp, top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OverlineText("${greeting()}, Floyachieee", color = c.ornament, modifier = Modifier.weight(1f))
-            val ui = LocalUi.current
-            Text(
-                "✦ Твой вайб",
-                style = MaterialTheme.typography.labelMedium,
-                color = c.accentBright,
-                modifier = Modifier
-                    .clip(Vesper.shapes.chip)
-                    .background(c.highlight)
-                    .clickable { ui.open(Routes.STATS) }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            )
+            Column(Modifier.weight(1f)) {
+                OverlineText("${greeting()}, ${name ?: "Floyachieee"}", color = c.ornament)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = if (ornament == Ornament.NEON) "FLOYA" else "Floya",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = c.textPrimary,
+                        modifier = Modifier.themedShine(),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "${tracksCount(trackCount)} · ${videosCount(videoCount)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = c.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
+            }
+            HeaderIcon(androidx.compose.material.icons.Icons.Rounded.Insights, "Твой вайб") { ui.open(Routes.STATS) }
+            Spacer(Modifier.width(4.dp))
+            // Profile: initial of the account, or a sign-in prompt.
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (session != null) c.accent else c.surfaceHigh)
+                    .border(1.dp, if (session != null) c.ornament else c.outline, androidx.compose.foundation.shape.CircleShape)
+                    .clickable { ui.open(Routes.ACCOUNT) },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (name != null) {
+                    Text(name.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.onAccent)
+                } else {
+                    Icon(androidx.compose.material.icons.Icons.Rounded.Person, "Войти в аккаунт", tint = c.textSecondary, modifier = Modifier.size(22.dp))
+                }
+            }
+            if (session != null) {
+                Box(
+                    Modifier
+                        .padding(start = 0.dp)
+                        .size(8.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(if (sync.error != null) c.danger else c.accentBright),
+                )
+            }
         }
-        Spacer(Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                text = if (ornament == Ornament.NEON) "FLOYA" else "Floya",
-                style = MaterialTheme.typography.displayMedium,
-                color = c.textPrimary,
-                modifier = Modifier.themedShine(),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = if (ornament == Ornament.NEON) "MUSIC" else "music",
-                style = MaterialTheme.typography.headlineSmall,
-                color = c.accentBright,
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
-        }
-        Text(
-            "${tracksCount(trackCount)}  ·  ${videosCount(videoCount)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = c.textMuted,
-        )
         if (ornament == Ornament.GOTHIC || ornament == Ornament.NEON) {
-            OrnamentDivider(Modifier.padding(top = 12.dp))
+            OrnamentDivider(Modifier.padding(top = 6.dp, end = 8.dp))
         }
+    }
+}
+
+@Composable
+private fun HeaderIcon(icon: ImageVector, label: String, onClick: () -> Unit) {
+    val c = Vesper.colors
+    Box(
+        Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, label, tint = c.textSecondary, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -392,77 +387,45 @@ private fun NowPlayingCard(onOpen: () -> Unit) {
     Row(
         Modifier
             .padding(horizontal = 20.dp)
-            .padding(top = 16.dp)
+            .padding(top = 12.dp)
             .fillMaxWidth()
-            .clip(Vesper.shapes.large)
-            .background(c.surface)
-            .border(1.dp, c.outline, Vesper.shapes.large)
-            .clickable(onClick = onOpen)
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Artwork(current.uri, current.title, Modifier.size(84.dp), size = ArtSize.Medium)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            OverlineText(if (state.isPlaying) "Сейчас играет" else "Продолжить", color = c.accentBright)
-            Spacer(Modifier.height(4.dp))
-            Text(current.title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(current.artist, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(10.dp))
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(Vesper.shapes.chip).background(c.progressTrack)) {
-                Box(Modifier.fillMaxWidth(progress.fraction).height(3.dp).background(c.accentBright))
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "${formatDuration(progress.positionMs)} / ${formatDuration(progress.durationMs)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = c.textMuted,
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        PlayPauseButton(state.isPlaying, onClick = { vm.player.togglePlayPause() }, size = 52.dp)
-    }
-}
-
-@Composable
-private fun QuickAction(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val c = Vesper.colors
-    Column(
-        modifier
             .clip(Vesper.shapes.medium)
             .background(c.surface)
             .border(1.dp, c.outline, Vesper.shapes.medium)
-            .clickable(onClick = onClick)
-            .padding(vertical = 14.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .clickable(onClick = onOpen)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(8.dp))
-        Text(
-            themedLabel(label),
-            style = MaterialTheme.typography.labelMedium,
-            color = c.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Artwork(current.uri, current.title, Modifier.size(52.dp), size = ArtSize.Small)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(current.title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(current.artist, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(Vesper.shapes.chip).background(c.progressTrack)) {
+                Box(Modifier.fillMaxWidth(progress.fraction).height(3.dp).background(c.accentBright))
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        PlayPauseButton(state.isPlaying, onClick = { vm.player.togglePlayPause() }, size = 42.dp)
     }
 }
 
 @Composable
-private fun DiscoverCard(icon: ImageVector, title: String, subtitle: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun Shortcut(icon: ImageVector, label: String, onClick: () -> Unit) {
     val c = Vesper.colors
-    Column(
-        modifier
+    Row(
+        Modifier
             .bouncyClick(onClick)
-            .clip(Vesper.shapes.medium)
+            .clip(Vesper.shapes.chip)
             .background(c.surfaceHigh)
-            .padding(14.dp),
+            .border(1.dp, c.outline, Vesper.shapes.chip)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(10.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(2.dp))
-        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Icon(icon, null, tint = c.accentBright, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(themedLabel(label), style = MaterialTheme.typography.labelLarge, color = c.textPrimary, maxLines = 1)
     }
 }
 
