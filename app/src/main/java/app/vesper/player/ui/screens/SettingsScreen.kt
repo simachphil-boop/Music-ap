@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.Refresh
@@ -109,6 +110,24 @@ fun SettingsScreen() {
                 Icons.Rounded.AutoAwesome,
                 s.ambience,
             ) { vm.setAmbience(it) }
+        }
+
+        item { Group("Перенос и коллекции") }
+        item {
+            SettingRow(
+                title = "Перенести мою музыку из Яндекс Музыки",
+                subtitle = "Плейлисты по логину, ссылке или файлу — с проверкой совпадений",
+                icon = Icons.Rounded.SwapHoriz,
+                onClick = { ui.open(app.vesper.player.ui.Routes.YANDEX_IMPORT) },
+            )
+        }
+        item {
+            SettingRow(
+                title = "Моя коллекция Кинопоиска",
+                subtitle = "Хочу посмотреть, избранное, просмотренное — с постерами и описаниями",
+                icon = Icons.Rounded.Movie,
+                onClick = { ui.open(app.vesper.player.ui.Routes.MOVIES) },
+            )
         }
 
         item { Group("Виджеты и панель управления") }

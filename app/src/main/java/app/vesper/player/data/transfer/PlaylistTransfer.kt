@@ -175,6 +175,71 @@ class PlaylistTransfer(
         uri?.takeIf { it.isNotBlank() && it != "null" }?.let { "https://" + it.removePrefix("https://").replace("%%", "200x200") }
 
     // ---------------------------------------------------------------------------------------------
+    // Yandex Music — a user's own public playlists by login.
+    // ---------------------------------------------------------------------------------------------
+
+    data class YandexPlaylistRef(val title: String, val owner: String, val kind: Long, val trackCount: Int, val cover: String?) {
+        val url: String get() = "https://music.yandex.ru/users/$owner/playlists/$kind"
+    }
+
+    /** "my.login", "my.login@yandex.ru" or a profile link → login. */
+    fun yandexLogin(input: String): String? {
+        val t = input.trim()
+        Regex("""music\.yandex\.[a-z]+/users/([^/?#]+)""").find(t)?.let { return java.net.URLDecoder.decode(it.groupValues[1], "UTF-8") }
+        val l = t.substringBefore('@').trim()
+        return l.takeIf { it.isNotBlank() && it.length <= 64 && !l.contains(' ') }
+    }
+
+    /**
+     * Playlists of a Yandex Music user. Works when the profile is public
+     * (Яндекс Музыка → Настройки → «Открыть мою фонотеку для всех»); no password is ever asked.
+     */
+    suspend fun yandexUserPlaylists(input: String): List<YandexPlaylistRef> = withContext(Dispatchers.IO) {
+        val login = yandexLogin(input) ?: throw TransferException("Введите логин Яндекса или ссылку на профиль в Яндекс Музыке")
+        val enc = java.net.URLEncoder.encode(login, "UTF-8")
+        val body = try {
+            http("https://api.music.yandex.net/users/$enc/playlists/list")
+        } catch (e: TransferException) {
+            throw TransferException("Профиль «$login» не найден или скрыт. В Яндекс Музыке откройте «Настройки» → «Открыть мою фонотеку для всех» и попробуйте снова.")
+        }
+        val arr = JSONObject(body).optJSONArray("result") ?: JSONArray()
+        val list = (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            YandexPlaylistRef(
+                title = o.optString("title").ifBlank { "Плейлист" },
+                owner = o.optJSONObject("owner")?.optString("login")?.ifBlank { null } ?: login,
+                kind = o.optLong("kind"),
+                trackCount = o.optInt("trackCount"),
+                cover = yandexCover(o.optJSONObject("cover")?.optString("uri") ?: o.optString("ogImage")),
+            )
+        }
+        val likes = runCatching { yandexLikesCount(enc) }.getOrNull()
+        val withLikes = if (likes != null && likes > 0) listOf(YandexPlaylistRef("Мне нравится", login, LIKES_KIND, likes, null)) + list else list
+        if (withLikes.isEmpty()) throw TransferException("У профиля «$login» нет открытых плейлистов. Проверьте, что фонотека открыта для всех.")
+        withLikes
+    }
+
+    private fun yandexLikesCount(encLogin: String): Int {
+        val r = JSONObject(http("https://api.music.yandex.net/users/$encLogin/likes/tracks")).optJSONObject("result")
+        return r?.optJSONObject("library")?.optJSONArray("tracks")?.length() ?: 0
+    }
+
+    /** One playlist of the list above (or the "Мне нравится" collection). */
+    suspend fun yandexPlaylist(ref: YandexPlaylistRef): TransferredPlaylist = withContext(Dispatchers.IO) {
+        if (ref.kind != LIKES_KIND) return@withContext fetch(ref.url)
+        val enc = java.net.URLEncoder.encode(ref.owner, "UTF-8")
+        val lib = JSONObject(http("https://api.music.yandex.net/users/$enc/likes/tracks")).optJSONObject("result")?.optJSONObject("library")
+        val ids = lib?.optJSONArray("tracks")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { t -> t.optString("id") + (t.optString("albumId").takeIf { it.isNotBlank() }?.let { ":$it" } ?: "") } }.orEmpty()
+        val items = ArrayList<OnlineItem>()
+        ids.chunked(100).forEach { chunk ->
+            val r = JSONObject(http("https://api.music.yandex.net/tracks?track-ids=" + java.net.URLEncoder.encode(chunk.joinToString(","), "UTF-8"))).optJSONArray("result") ?: JSONArray()
+            for (i in 0 until r.length()) r.optJSONObject(i)?.let { yandexTrack(it) }?.let { items += it }
+        }
+        if (items.isEmpty()) throw TransferException("Не удалось прочитать «Мне нравится» — коллекция закрыта")
+        TransferredPlaylist("Мне нравится (Яндекс)", "Яндекс Музыка", "https://music.yandex.ru/users/${ref.owner}/tracks", null, items)
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Deezer — open API.
     // ---------------------------------------------------------------------------------------------
 
@@ -278,6 +343,8 @@ class PlaylistTransfer(
     }
 
     companion object {
+        const val LIKES_KIND = -3L
+
         fun encode(items: List<OnlineItem>): String = JSONArray().apply {
             items.forEach {
                 put(JSONObject().put("u", it.pageUrl).put("t", it.title).put("a", it.artist).put("d", it.durationSec).put("th", it.thumbnail ?: ""))

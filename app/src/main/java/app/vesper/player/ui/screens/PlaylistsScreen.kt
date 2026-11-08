@@ -70,7 +70,7 @@ fun PlaylistsScreen() {
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Плейлисты", subtitle = "Музыка: $music · Видео: $video") {
-            PressableIcon(Icons.Rounded.SwapHoriz, "Перенести из другого сервиса", onClick = { ui.transferVisible = true })
+            PressableIcon(Icons.Rounded.SwapHoriz, "Перенести из Яндекс Музыки и других сервисов", onClick = { ui.open(app.vesper.player.ui.Routes.YANDEX_IMPORT) })
             PressableIcon(Icons.Rounded.Add, "Создать плейлист", onClick = { if (ui.playlistKind == 2) ui.transferVisible = true else creating = true })
         }
         ChipRow(listOf("Музыка", "Видео", "Перенесённые"), ui.playlistKind, onSelect = { ui.playlistKind = it })

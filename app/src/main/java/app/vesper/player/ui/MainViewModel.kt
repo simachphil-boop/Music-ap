@@ -94,6 +94,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val studio = container.studio
     val transfer = container.transfer
     val webSearch = container.webSearch
+    /** Checking matches of an imported list (Yandex Music, file, link) before saving it. */
+    val importReview = app.vesper.player.data.transfer.ImportReview(webSearch, transfer, viewModelScope)
+    /** «Моя коллекция Кинопоиска». */
+    val movies = app.vesper.player.data.movies.MovieCollection(app, viewModelScope)
 
     /** Link received via "Share → Floya Music"; consumed by the downloads screen. */
     val sharedUrl = MutableStateFlow<String?>(null)

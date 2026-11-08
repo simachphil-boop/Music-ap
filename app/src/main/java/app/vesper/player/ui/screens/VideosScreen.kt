@@ -20,6 +20,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -83,6 +84,7 @@ fun VideosScreen() {
             title = "Видео",
             subtitle = "${videosCount(vids.all.size)} · ${formatTotalDuration(vids.all.sumOf { it.durationMs })}",
         ) {
+            PressableIcon(Icons.Rounded.Movie, "Моя коллекция Кинопоиска", onClick = { ui.open(app.vesper.player.ui.Routes.MOVIES) })
             PressableIcon(Icons.Rounded.Download, "Скачать по ссылке", onClick = { ui.goToTab(app.vesper.player.ui.Routes.DOWNLOADS) })
             PressableIcon(Icons.Rounded.Search, "Поиск", onClick = { searching = true })
             PressableIcon(Icons.Rounded.Sort, "Сортировка", onClick = { sortSheet = true })

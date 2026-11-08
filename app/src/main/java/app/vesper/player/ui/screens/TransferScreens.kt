@@ -161,15 +161,13 @@ fun TransferSheet(onDismiss: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SecondaryButton("Слушать", onClick = { vm.player.playOnline(p.items) }, icon = Icons.Rounded.PlayArrow, modifier = Modifier.weight(1f))
                     PrimaryButton(
-                        "Сохранить",
+                        "Подобрать и сохранить",
                         onClick = {
-                            scope.launch {
-                                val id = vm.transfer.save(p)
-                                vm.message("Плейлист «${p.name}» перенесён")
-                                dismiss { ui.open(Routes.onlinePlaylist(id)) }
-                            }
+                            // Find every track among streamable versions and let the user check them first.
+                            vm.importReview.start(p)
+                            dismiss { ui.open(Routes.IMPORT_REVIEW) }
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1.3f),
                     )
                 }
             }
