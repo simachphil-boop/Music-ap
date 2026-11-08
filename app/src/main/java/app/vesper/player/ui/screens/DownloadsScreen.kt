@@ -119,6 +119,7 @@ fun DownloadsScreen() {
     var info by remember { mutableStateOf<LinkInfo?>(null) }
     var kind by rememberSaveable { mutableStateOf(DownloadKind.VIDEO) }
     var height by rememberSaveable { mutableStateOf<Int?>(null) }
+    var audioQuality by rememberSaveable { mutableStateOf(0) }
     var fragment by remember { mutableStateOf(false) }
     var range by remember { mutableStateOf(0f..1f) }
     var crop by remember { mutableStateOf<CropAspect?>(null) }
@@ -265,6 +266,24 @@ fun DownloadsScreen() {
                             VesperChip("Видео", kind == DownloadKind.VIDEO, onClick = { kind = DownloadKind.VIDEO })
                             VesperChip("Только аудио", kind == DownloadKind.AUDIO, onClick = { kind = DownloadKind.AUDIO })
                         }
+                        AnimatedVisibility(visible = kind == DownloadKind.AUDIO) {
+                            Column {
+                                Spacer(Modifier.height(12.dp))
+                                OverlineText("Качество звука")
+                                Spacer(Modifier.height(6.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    VesperChip("Лучшее", audioQuality == 0, onClick = { audioQuality = 0 })
+                                    VesperChip("Экономное ~128 кбит/с", audioQuality == 1, onClick = { audioQuality = 1 })
+                                }
+                                Text(
+                                    if (audioQuality == 0) "Максимум, что отдаёт сайт (обычно 128–160 кбит/с AAC/Opus, у прямых файлов — как есть)."
+                                    else "Файлы примерно вдвое меньше — для телефона с малой памятью.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = c.textMuted,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
+                        }
                         AnimatedVisibility(visible = kind == DownloadKind.VIDEO && i.heights.isNotEmpty()) {
                             Column {
                                 Spacer(Modifier.height(12.dp))
@@ -341,7 +360,7 @@ fun DownloadsScreen() {
                                     endMs = if (fragment && range.endInclusive < 1f) (range.endInclusive * totalMs2).toLong() else 0L,
                                     crop = if (kind == DownloadKind.VIDEO) crop else null,
                                 )
-                                vm.downloader.download(i, kind, if (kind == DownloadKind.VIDEO) height else null, edit)
+                                vm.downloader.download(i, kind, if (kind == DownloadKind.VIDEO) height else null, edit, audioQuality)
                                 info = null
                                 url = ""
                             },
@@ -378,8 +397,8 @@ fun DownloadsScreen() {
                     },
                     onLogin = { ui.open(Routes.login(guessSite(t.url) ?: CookieSite.YOUTUBE)) },
                     onRetry = {
-                        url = t.url
-                        lookup(t.url)
+                        // Same task again: keeps the parts already downloaded and continues.
+                        vm.downloader.retry(t.id)
                     },
                 )
             }
@@ -499,8 +518,12 @@ private fun DownloadRow(task: DownloadTask, onEdit: () -> Unit, onLogin: () -> U
         Column(Modifier.weight(1f)) {
             Text(task.title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val status = when (task.status) {
-                DownloadStatus.QUEUED -> "В очереди"
-                DownloadStatus.DOWNLOADING -> "${(task.progress * 100).toInt()}%" + if (task.etaSec > 0) " · осталось ${formatDuration(task.etaSec * 1000)}" else ""
+                DownloadStatus.QUEUED -> task.error ?: "В очереди"
+                DownloadStatus.DOWNLOADING -> listOfNotNull(
+                    "${(task.progress * 100).toInt()}%",
+                    task.speedBps.takeIf { it > 0 }?.let { formatSpeed(it) },
+                    task.etaSec.takeIf { it > 0 }?.let { "осталось ${formatDuration(it * 1000)}" },
+                ).joinToString(" · ")
                 DownloadStatus.PROCESSING -> "Обработка…"
                 DownloadStatus.DONE -> "Готово — нажмите, чтобы открыть"
                 DownloadStatus.FAILED -> task.error ?: "Ошибка"
@@ -583,4 +606,11 @@ private fun ImportTile(
         Text(title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** 1 536 000 B/s → "1.5 МБ/с". */
+internal fun formatSpeed(bps: Long): String = when {
+    bps >= 1024L * 1024 -> String.format(java.util.Locale.US, "%.1f МБ/с", bps / 1048576.0)
+    bps >= 1024 -> "${bps / 1024} КБ/с"
+    else -> "$bps Б/с"
 }

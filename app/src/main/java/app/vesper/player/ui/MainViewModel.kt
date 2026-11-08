@@ -371,6 +371,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------------------------------------
 
     fun setTheme(id: String) = viewModelScope.launch { settingsRepo.setTheme(id) }
+    fun setThemeMode(mode: Int) = viewModelScope.launch { settingsRepo.setThemeMode(mode) }
     fun setMusicSort(order: SortOrder) = viewModelScope.launch { settingsRepo.setMusicSort(order) }
     fun setVideoSort(order: SortOrder) = viewModelScope.launch { settingsRepo.setVideoSort(order) }
     fun setPauseOnDisconnect(v: Boolean) = viewModelScope.launch { settingsRepo.setPauseOnDisconnect(v) }

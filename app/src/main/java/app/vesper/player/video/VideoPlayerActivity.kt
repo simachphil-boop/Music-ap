@@ -114,7 +114,7 @@ class VideoPlayerActivity : ComponentActivity() {
 
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle(initialValue = null)
-            val theme = ThemeRegistry.byId(settings?.themeId)
+            val theme = ThemeRegistry.resolve(settings?.themeId, settings?.themeMode ?: 0, androidx.compose.foundation.isSystemInDarkTheme())
             VesperThemeProvider(theme, applySystemBars = false) {
                 VideoPlayerScreen(
                     player = player,

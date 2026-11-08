@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
-            val theme = ThemeRegistry.byId(settings.themeId)
+            val theme = ThemeRegistry.resolve(settings.themeId, settings.themeMode, androidx.compose.foundation.isSystemInDarkTheme())
             VesperThemeProvider(theme) {
                 VesperRoot(vm = vm, actions = actions, openPlayerSignal = openPlayerSignal)
             }

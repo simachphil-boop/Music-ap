@@ -38,7 +38,10 @@ import java.util.UUID
 
 enum class DownloadKind { VIDEO, AUDIO }
 
-class DownloadError(message: String, val needsLogin: Boolean) : Exception(message)
+class DownloadError(message: String, val needsLogin: Boolean, val network: Boolean = false) : Exception(message)
+
+/** The connection dropped after part of the file arrived — retry continues from the saved parts. */
+class NetworkInterrupted : java.io.IOException("Connection reset: network interrupted")
 
 enum class SearchSource(val title: String, val note: String) {
     YOUTUBE("YouTube", "Музыка, клипы, видео"),
@@ -83,6 +86,13 @@ data class DownloadTask(
     val mediaId: Long? = null,
     val edit: EditSpec? = null,
     val needsLogin: Boolean = false,
+    /** Current speed in bytes per second (0 = unknown). */
+    val speedBps: Long = 0,
+    /** 0 = best available, 1 = economy (~128 kbit/s, smaller files). */
+    val audioQuality: Int = 0,
+    /** Automatic retry number after a network failure (0 = first try). */
+    val attempt: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
 ) {
     val active: Boolean get() = status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING || status == DownloadStatus.PROCESSING
 }
@@ -327,7 +337,7 @@ class Downloader(
         }
     }
 
-    fun download(info: LinkInfo, kind: DownloadKind, maxHeight: Int?, edit: EditSpec? = null) {
+    fun download(info: LinkInfo, kind: DownloadKind, maxHeight: Int?, edit: EditSpec? = null, audioQuality: Int = 0) {
         val task = DownloadTask(
             id = UUID.randomUUID().toString(),
             url = info.url,
@@ -337,11 +347,109 @@ class Downloader(
             artist = info.uploader,
             maxHeight = maxHeight,
             edit = edit?.takeIf { !it.isNoop },
+            audioQuality = audioQuality,
         )
         _tasks.update { listOf(task) + it }
+        persist()
+        launchTask(task)
+    }
+
+    /** Runs again with the same id, so a half-downloaded file in its work folder is continued, not restarted. */
+    fun retry(id: String) {
+        val task = _tasks.value.firstOrNull { it.id == id } ?: return
+        if (task.active) return
+        val fresh = task.copy(status = DownloadStatus.QUEUED, error = null, needsLogin = false, attempt = 0, speedBps = 0, etaSec = 0)
+        _tasks.update { list -> list.map { if (it.id == id) fresh else it } }
+        persist()
+        launchTask(fresh)
+    }
+
+    fun remove(id: String) {
+        _tasks.update { list -> list.filter { it.id != id || it.active } }
+        workDirOf(id).deleteRecursively()
+        persist()
+    }
+
+    private fun launchTask(task: DownloadTask) {
         DownloadService.start(context)
         // At most two downloads at once — a whole playlist can be queued safely.
-        scope.launch { slots.withPermit { if (_tasks.value.firstOrNull { it.id == task.id }?.status != DownloadStatus.CANCELED) run(task) } }
+        scope.launch {
+            slots.withPermit {
+                var attempt = 0
+                while (true) {
+                    if (isCanceled(task.id)) break
+                    val current = _tasks.value.firstOrNull { it.id == task.id } ?: break
+                    run(current)
+                    val after = _tasks.value.firstOrNull { it.id == task.id } ?: break
+                    // Network hiccup: wait a little and continue from where it stopped (up to 3 times).
+                    if (after.status == DownloadStatus.FAILED && networkFailures.remove(task.id) && attempt < AUTO_RETRIES) {
+                        attempt++
+                        val wait = longArrayOf(3, 8, 20)[attempt - 1]
+                        for (left in wait downTo 1) {
+                            if (isCanceled(task.id)) break
+                            updateTask(task.id) {
+                                it.copy(status = DownloadStatus.QUEUED, attempt = attempt, error = "Сеть прервалась — повтор через $left с (попытка $attempt из $AUTO_RETRIES)")
+                            }
+                            kotlinx.coroutines.delay(1000)
+                        }
+                        continue
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    // ---- history (kept between app launches) -------------------------------------------------
+
+    private val networkFailures = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    private fun workDirOf(id: String) = File(context.getExternalFilesDir(null) ?: context.filesDir, "downloads/$id")
+
+    private fun persist() {
+        val snapshot = _tasks.value.take(HISTORY_LIMIT)
+        scope.launch(Dispatchers.IO) {
+            val arr = org.json.JSONArray()
+            snapshot.forEach { t ->
+                arr.put(
+                    org.json.JSONObject()
+                        .put("id", t.id).put("url", t.url).put("title", t.title).put("thumb", t.thumbnail ?: "")
+                        .put("kind", t.kind.name).put("artist", t.artist).put("h", t.maxHeight ?: 0)
+                        .put("status", t.status.name).put("error", t.error ?: "").put("media", t.mediaId ?: 0L)
+                        .put("q", t.audioQuality).put("at", t.createdAt).put("login", t.needsLogin),
+                )
+            }
+            prefs.edit().putString(KEY_HISTORY, arr.toString()).apply()
+        }
+    }
+
+    private fun loadHistory(): List<DownloadTask> = runCatching {
+        val arr = org.json.JSONArray(prefs.getString(KEY_HISTORY, "[]"))
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val status = runCatching { DownloadStatus.valueOf(o.getString("status")) }.getOrDefault(DownloadStatus.FAILED)
+            val interrupted = status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING || status == DownloadStatus.PROCESSING
+            DownloadTask(
+                id = o.getString("id"),
+                url = o.getString("url"),
+                title = o.optString("title"),
+                thumbnail = o.optString("thumb").ifBlank { null },
+                kind = runCatching { DownloadKind.valueOf(o.getString("kind")) }.getOrDefault(DownloadKind.AUDIO),
+                artist = o.optString("artist"),
+                maxHeight = o.optInt("h").takeIf { it > 0 },
+                status = if (interrupted) DownloadStatus.FAILED else status,
+                error = if (interrupted) "Загрузка прервалась, когда приложение закрылось. Нажмите «Повторить» — продолжим с того же места." else o.optString("error").ifBlank { null },
+                mediaId = o.optLong("media").takeIf { it > 0 },
+                audioQuality = o.optInt("q"),
+                createdAt = o.optLong("at", System.currentTimeMillis()),
+                needsLogin = o.optBoolean("login"),
+                progress = if (status == DownloadStatus.DONE) 1f else 0f,
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    init {
+        _tasks.value = loadHistory()
     }
 
     fun cancel(id: String) {
@@ -350,7 +458,10 @@ class Downloader(
     }
 
     fun clearFinished() {
+        val gone = _tasks.value.filter { !it.active }
         _tasks.update { list -> list.filter { it.active } }
+        scope.launch(Dispatchers.IO) { gone.forEach { workDirOf(it.id).deleteRecursively() } }
+        persist()
     }
 
     private fun addCookies(request: YoutubeDLRequest) {
@@ -359,11 +470,18 @@ class Downloader(
     }
 
     private fun updateTask(id: String, transform: (DownloadTask) -> DownloadTask) {
-        _tasks.update { list -> list.map { if (it.id == id) transform(it) else it } }
+        var statusChanged = false
+        _tasks.update { list ->
+            list.map {
+                if (it.id == id) transform(it).also { n -> if (n.status != it.status) statusChanged = true } else it
+            }
+        }
+        // History is saved on status changes only, not on every progress tick.
+        if (statusChanged) persist()
     }
 
     private suspend fun run(task: DownloadTask) = withContext(Dispatchers.IO) {
-        val workDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "downloads/${task.id}").apply { mkdirs() }
+        val workDir = workDirOf(task.id).apply { mkdirs() }
         try {
             updateTask(task.id) { it.copy(status = DownloadStatus.DOWNLOADING) }
             val direct = directFile(task, workDir)
@@ -373,13 +491,22 @@ class Downloader(
             }
             if (isCanceled(task.id)) return@withContext
             if (!ensureEngine()) error("Не удалось запустить движок загрузки (${FfmpegTool.lastError})")
-            val fast = runCatching { fastYouTubeAudio(task, workDir) }.getOrNull()
+            val fast = try {
+                fastYouTubeAudio(task, workDir)
+            } catch (e: NetworkInterrupted) {
+                throw e
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
             if (fast != null) {
                 finish(task, fast)
                 return@withContext
             }
             if (isCanceled(task.id)) return@withContext
-            workDir.listFiles()?.forEach { it.deleteRecursively() }
+            // Leave yt-dlp's own .part files for resuming; drop only leftovers of the fast path.
+            workDir.listFiles()?.filter { it.name.startsWith("source.") || it.name.startsWith("cover") || it.name.endsWith(".chunks") }?.forEach { it.delete() }
             val info = infoFile(task.url).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < INFO_TTL_MS }
             val request = YoutubeDLRequest(StreamResolver.normalizePage(task.url)).apply {
                 addOption("--no-playlist")
@@ -387,6 +514,11 @@ class Downloader(
                 // Already looked the link up when the user opened it — skip the second lookup.
                 if (info != null) addOption("--load-info-json", info.absolutePath)
                 addOption("--concurrent-fragments", "4")
+                // Ride out short network drops instead of failing the whole download.
+                addOption("--retries", "10")
+                addOption("--fragment-retries", "10")
+                addOption("--socket-timeout", "20")
+                addOption("--continue")
                 YtDlpTuning.apply(context, this, skipManifests = task.kind == DownloadKind.AUDIO)
                 addCookies(this)
                 task.edit?.takeIf { it.trims }?.let { e ->
@@ -397,10 +529,14 @@ class Downloader(
                 addOption("-o", workDir.absolutePath + "/%(title).120B.%(ext)s")
                 if (task.kind == DownloadKind.AUDIO) {
                     addOption("-x")
+                    val economy = task.audioQuality == 1
                     if (audioAsMp3) {
-                        addOption("-f", "bestaudio/best")
+                        addOption("-f", if (economy) "bestaudio[abr<=140]/worstaudio/bestaudio/best" else "bestaudio/best")
                         addOption("--audio-format", "mp3")
-                        addOption("--audio-quality", "0")
+                        addOption("--audio-quality", if (economy) "5" else "0")
+                    } else if (economy) {
+                        addOption("-f", "bestaudio[abr<=140][ext=m4a]/bestaudio[abr<=140]/worstaudio[ext=m4a]/worstaudio/bestaudio/best")
+                        addOption("--audio-format", "best")
                     } else {
                         // Take a format that can be saved as is: AAC → .m4a, MP3 → .mp3, no re-encoding.
                         addOption("-f", "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/bestaudio[ext=mp3]/bestaudio/best")
@@ -424,12 +560,15 @@ class Downloader(
             YoutubeDL.getInstance().execute(request, task.id) { progress, eta, line ->
                 val processing = line.contains("[Merger]") || line.contains("[ExtractAudio]") ||
                     line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") || line.contains("[VideoConvertor]")
+                val speed = parseSpeed(line)
                 updateTask(task.id) {
                     if (it.status == DownloadStatus.CANCELED) it
                     else it.copy(
                         status = if (processing) DownloadStatus.PROCESSING else DownloadStatus.DOWNLOADING,
                         progress = if (progress >= 0f) (progress / 100f).coerceIn(0f, 1f) else it.progress,
                         etaSec = eta,
+                        speedBps = if (processing) 0 else speed ?: it.speedBps,
+                        error = null,
                     )
                 }
             }
@@ -467,10 +606,13 @@ class Downloader(
             val current = _tasks.value.firstOrNull { it.id == task.id }
             if (current?.status != DownloadStatus.CANCELED) {
                 val d = describe(e)
-                updateTask(task.id) { it.copy(status = DownloadStatus.FAILED, error = d.message, needsLogin = d.needsLogin) }
+                if (d.network) networkFailures += task.id
+                updateTask(task.id) { it.copy(status = DownloadStatus.FAILED, error = d.message, needsLogin = d.needsLogin, speedBps = 0) }
             }
         } finally {
-            workDir.deleteRecursively()
+            // Keep partial data after a failure so «Повторить» continues instead of starting over.
+            val st = _tasks.value.firstOrNull { it.id == task.id }?.status
+            if (st == DownloadStatus.DONE || st == DownloadStatus.CANCELED) workDir.deleteRecursively()
         }
     }
 
@@ -494,10 +636,11 @@ class Downloader(
         val ok = ParallelHttp.download(d.url, DirectLink.headers, d.length, target, { isCanceled(task.id) }) { done, total, bps ->
             updateTask(task.id) {
                 if (it.status == DownloadStatus.CANCELED) it
-                else it.copy(progress = (done.toFloat() / total).coerceIn(0f, 1f), etaSec = if (bps > 0) (total - done) / bps else 0)
+                else it.copy(progress = (done.toFloat() / total).coerceIn(0f, 1f), etaSec = if (bps > 0) (total - done) / bps else 0, speedBps = bps, error = null)
             }
         }
         if (ok) return target
+        if (File(target.path + ".chunks").isFile && !isCanceled(task.id)) throw NetworkInterrupted()
         // Server doesn't allow parts (no Range support): one ordinary stream, still without yt-dlp.
         if (isCanceled(task.id)) return null
         return runCatching {
@@ -547,7 +690,8 @@ class Downloader(
     private suspend fun fastYouTubeAudio(task: DownloadTask, workDir: File): File? = coroutineScope {
         if (task.kind != DownloadKind.AUDIO || task.edit != null) return@coroutineScope null
         val id = YouTubeFast.videoId(task.url) ?: return@coroutineScope null
-        val stream = StreamResolver.fastAudio(context, task.url) ?: return@coroutineScope null
+        val stream = (if (task.audioQuality == 1) YouTubeFast.audio(task.url, economy = true) else StreamResolver.fastAudio(context, task.url))
+            ?: return@coroutineScope null
         val raw = File(workDir, "source.${stream.ext}")
         if (!ParallelHttp.download(stream.url, stream.headers, stream.contentLength, raw, { isCanceled(task.id) }) { done, total, bytesPerSec ->
                 updateTask(task.id) {
@@ -556,11 +700,18 @@ class Downloader(
                         status = DownloadStatus.DOWNLOADING,
                         progress = (done.toFloat() / total).coerceIn(0f, 1f),
                         etaSec = if (bytesPerSec > 0) (total - done) / bytesPerSec else 0,
+                        speedBps = bytesPerSec,
+                        error = null,
                     )
                 }
             }
-        ) return@coroutineScope null
-        updateTask(task.id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f) }
+        ) {
+            if (isCanceled(task.id)) return@coroutineScope null
+            // Part of the file is already here — keep it and let the retry continue.
+            if (File(raw.path + ".chunks").isFile) throw NetworkInterrupted()
+            return@coroutineScope null
+        }
+        updateTask(task.id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f, speedBps = 0) }
 
         val cover = fetchCover(id, task.thumbnail, workDir)
         val title = task.title.ifBlank { stream.title }
@@ -575,7 +726,7 @@ class Downloader(
             add("-map"); add("0:a")
             if (cover != null) { add("-map"); add("1:v") }
             when {
-                mp3 -> { add("-c:a"); add("libmp3lame"); add("-q:a"); add("0"); add("-id3v2_version"); add("3") }
+                mp3 -> { add("-c:a"); add("libmp3lame"); add("-q:a"); add(if (task.audioQuality == 1) "5" else "0"); add("-id3v2_version"); add("3") }
                 needsEncode -> { add("-c:a"); add("aac"); add("-b:a"); add("192k") }
                 else -> { add("-c:a"); add("copy") }
             }
@@ -622,6 +773,22 @@ class Downloader(
     companion object {
         private const val KEY_LAST_UPDATE = "last_engine_update"
         private const val KEY_MP3 = "audio_as_mp3"
+        private const val KEY_HISTORY = "history_v1"
+        private const val HISTORY_LIMIT = 150
+        private const val AUTO_RETRIES = 3
+
+        /** "[download]  42.0% of 5.31MiB at 1.20MiB/s ETA 00:03" → bytes per second. */
+        fun parseSpeed(line: String): Long? {
+            val m = Regex("""at\s+([\d.]+)\s*([KMG]?i?B)/s""").find(line) ?: return null
+            val v = m.groupValues[1].toDoubleOrNull() ?: return null
+            val mult = when (m.groupValues[2].uppercase().firstOrNull()) {
+                'K' -> 1024.0
+                'M' -> 1024.0 * 1024
+                'G' -> 1024.0 * 1024 * 1024
+                else -> 1.0
+            }
+            return (v * mult).toLong()
+        }
         private const val INFO_TTL_MS = 30L * 60 * 1000
         private val urlRegex = Regex("""https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
 
@@ -646,8 +813,12 @@ class Downloader(
                 has("--cookies", "Sign in", "log in", "login required", "authentication") ->
                     DownloadError("Сайт требует вход в аккаунт. Войдите ниже и повторите.\n$detail", needsLogin = true)
                 has("Unsupported URL") -> DownloadError("Этот сайт не поддерживается", needsLogin = false)
-                has("Unable to resolve host", "Failed to resolve", "timed out", "Network is unreachable") ->
-                    DownloadError("Нет подключения к интернету", needsLogin = false)
+                has("Unable to resolve host", "Failed to resolve", "Network is unreachable", "No address associated") ->
+                    DownloadError("Нет подключения к интернету. Повторим автоматически, когда связь вернётся.", needsLogin = false, network = true)
+                has("timed out", "timeout", "Connection reset", "connection abort", "SocketException", "Broken pipe", "IncompleteRead", "HTTP Error 5", "Connection refused", "unexpected end of stream") ->
+                    DownloadError("Связь прервалась во время загрузки. Повторяем и продолжаем с того же места.", needsLogin = false, network = true)
+                has("No space left") -> DownloadError("Не хватает места на телефоне. Освободите память и нажмите «Повторить».", needsLogin = false)
+                has("Requested format is not available") -> DownloadError("Выбранное качество недоступно для этого ролика — выберите «Лучшее» и повторите.", needsLogin = false)
                 has("HTTP Error 403") ->
                     DownloadError("Сайт отклонил загрузку. Обновите движок ниже или войдите в аккаунт.\n$detail", needsLogin = true)
                 has("not available", "unavailable", "removed") -> DownloadError("Видео недоступно.\n$detail", needsLogin = false)

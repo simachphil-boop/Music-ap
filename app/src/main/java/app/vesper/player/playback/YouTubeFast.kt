@@ -75,10 +75,10 @@ object YouTubeFast {
     }
 
     /** Returns a working direct audio stream or null (caller then uses yt-dlp). */
-    fun audio(pageUrl: String): Stream? {
+    fun audio(pageUrl: String, economy: Boolean = false): Stream? {
         val id = videoId(pageUrl) ?: return null
         for (client in clients) {
-            val s = runCatching { request(id, client) }.getOrNull() ?: continue
+            val s = runCatching { request(id, client, economy) }.getOrNull() ?: continue
             if (probe(s)) return s
         }
         return null
@@ -146,7 +146,7 @@ object YouTubeFast {
         return null
     }
 
-    private fun request(videoId: String, c: Client): Stream? {
+    private fun request(videoId: String, c: Client, economy: Boolean = false): Stream? {
         val root = player(videoId, c) ?: return null
         val streaming = root.optJSONObject("streamingData") ?: return null
         val formats = streaming.optJSONArray("adaptiveFormats") ?: return null
@@ -159,7 +159,9 @@ object YouTubeFast {
             if (!f.has("url")) continue // ciphered — leave to yt-dlp
             if (f.has("isDrc") && f.optBoolean("isDrc")) continue
             // Prefer AAC/M4A: plays everywhere and can be saved without re-encoding.
-            val score = f.optLong("bitrate") + if (mime.contains("mp4")) 1_000_000L else 0L
+            // Economy = the smallest stream (~48–130 kbit/s), otherwise the best one.
+            val bitrate = f.optLong("bitrate")
+            val score = (if (economy) 10_000_000L - bitrate else bitrate) + if (mime.contains("mp4")) 20_000_000L else 0L
             if (score > bestScore) {
                 bestScore = score
                 best = f

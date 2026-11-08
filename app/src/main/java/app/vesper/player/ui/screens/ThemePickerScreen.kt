@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import app.vesper.player.ui.components.ChipRow
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -85,6 +88,13 @@ fun ThemePickerScreen(onBack: () -> Unit) {
         (lib.recentlyPlayed.ifEmpty { lib.sortedTracks }).take(4)
     }
 
+    fun apply(t: VesperTheme) {
+        vm.setTheme(t.id)
+        // "Always light" would hide the choice — switch back so the new theme is actually visible.
+        if (settings.themeMode == 2 && t.palette.isDark) vm.setThemeMode(0)
+        vm.message("Тема «${t.name}» применена")
+    }
+
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottom + 12.dp)) {
             item {
@@ -99,8 +109,28 @@ fun ThemePickerScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = c.textSecondary,
                     )
-                    OrnamentDivider(Modifier.padding(vertical = 12.dp))
+                    Spacer(Modifier.height(14.dp))
+                    OverlineText("Режим", color = c.textMuted)
+                    Spacer(Modifier.height(6.dp))
                 }
+                ChipRow(listOf("Выбранная тема", "Как в системе", "Всегда светлая"), settings.themeMode, onSelect = { vm.setThemeMode(it) })
+                Text(
+                    when (settings.themeMode) {
+                        1 -> "Днём — светлая «${ThemeRegistry.minimalLight.name}», ночью и в тёмном режиме телефона — выбранная ниже тёмная тема."
+                        2 -> "Всегда светлая тема «${ThemeRegistry.minimalLight.name}». Выбор ниже включится, когда вернёте режим «Выбранная тема»."
+                        else -> "Всегда показывается тема, выбранная ниже."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = c.textSecondary,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                Text(
+                    "Сейчас: ${Vesper.theme.name}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = c.accentBright,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                OrnamentDivider(Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
             items(ThemeRegistry.all, key = { it.id }) { theme ->
                 ThemeCard(
@@ -108,6 +138,7 @@ fun ThemePickerScreen(onBack: () -> Unit) {
                     selected = theme.id == settings.themeId,
                     sampleTitle = sample.firstOrNull()?.title,
                     onClick = { preview = theme },
+                    onApply = { apply(theme) },
                 )
             }
         }
@@ -122,9 +153,10 @@ fun ThemePickerScreen(onBack: () -> Unit) {
                 theme = t,
                 sample = sample,
                 isCurrent = t.id == settings.themeId,
+                bottomInset = bottom,
                 onClose = { preview = null },
                 onApply = {
-                    vm.setTheme(t.id)
+                    apply(t)
                     preview = null
                 },
             )
@@ -135,7 +167,7 @@ fun ThemePickerScreen(onBack: () -> Unit) {
 
 /** A miniature, fully themed rendering of the player using that theme's own tokens. */
 @Composable
-private fun ThemeCard(theme: VesperTheme, selected: Boolean, sampleTitle: String?, onClick: () -> Unit) {
+private fun ThemeCard(theme: VesperTheme, selected: Boolean, sampleTitle: String?, onClick: () -> Unit, onApply: () -> Unit) {
     val outer = Vesper.colors
     Column(
         Modifier
@@ -184,7 +216,12 @@ private fun ThemeCard(theme: VesperTheme, selected: Boolean, sampleTitle: String
                     Spacer(Modifier.width(6.dp))
                     Text("Активна", style = MaterialTheme.typography.labelMedium, color = p.accentBright)
                 } else {
-                    Text("Предпросмотр", style = MaterialTheme.typography.labelMedium, color = p.textMuted)
+                    // Apply right from the list — no need to open the preview at all.
+                    Box(
+                        Modifier.clip(Vesper.shapes.chip).background(p.accent).clickable(onClick = onApply).padding(horizontal = 14.dp, vertical = 6.dp),
+                    ) {
+                        Text("Применить", style = MaterialTheme.typography.labelMedium, color = p.onAccent)
+                    }
                 }
             }
         }
@@ -197,6 +234,7 @@ private fun ThemePreview(
     theme: VesperTheme,
     sample: List<TrackEntity>,
     isCurrent: Boolean,
+    bottomInset: androidx.compose.ui.unit.Dp,
     onClose: () -> Unit,
     onApply: () -> Unit,
 ) {
@@ -208,8 +246,7 @@ private fun ThemePreview(
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(p.backgroundAlt, p.background)))
                 .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
-                .statusBarsPadding()
-                .navigationBarsPadding(),
+                .statusBarsPadding(),
         ) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 PressableIcon(Icons.Rounded.ArrowBack, "Закрыть предпросмотр", onClick = onClose)
@@ -218,15 +255,16 @@ private fun ThemePreview(
                     Text(theme.name, style = MaterialTheme.typography.titleMedium, color = p.textPrimary)
                 }
             }
+            // Everything between the header and the buttons scrolls, so the buttons never get pushed off-screen.
             Column(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 28.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
             ) {
+                Spacer(Modifier.height(8.dp))
                 Artwork(
                     uri = lead?.uri,
                     seed = lead?.title ?: theme.name,
-                    modifier = Modifier.fillMaxWidth(0.72f).aspectRatio(1f),
+                    modifier = Modifier.fillMaxWidth(0.62f).widthIn(max = 320.dp).aspectRatio(1f),
                     size = ArtSize.Large,
                 )
                 Spacer(Modifier.height(20.dp))
@@ -252,15 +290,17 @@ private fun ThemePreview(
                     Icon(Icons.Rounded.SkipNext, null, tint = p.textPrimary, modifier = Modifier.size(34.dp))
                     Icon(Icons.Rounded.Repeat, null, tint = p.textMuted)
                 }
-            }
-            if (sample.size > 1) {
-                SectionHeader("Ваша библиотека")
-                sample.drop(1).take(2).forEachIndexed { i, t ->
-                    TrackRow(t, isCurrent = i == 0, isPlaying = false, onClick = {})
+                if (sample.size > 1) {
+                    SectionHeader("Ваша библиотека")
+                    sample.drop(1).take(2).forEachIndexed { i, t ->
+                        TrackRow(t, isCurrent = i == 0, isPlaying = false, onClick = {})
+                    }
                 }
+                Spacer(Modifier.height(12.dp))
             }
+            // Pinned action bar, lifted above the mini player and the bottom navigation.
             Row(
-                Modifier.fillMaxWidth().padding(20.dp),
+                Modifier.fillMaxWidth().background(p.surface).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 12.dp + bottomInset),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SecondaryButton("Назад", onClick = onClose, modifier = Modifier.weight(1f))

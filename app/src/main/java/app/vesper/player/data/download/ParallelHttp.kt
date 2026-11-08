@@ -33,11 +33,21 @@ object ParallelHttp {
         val total = if (knownLength > 0) knownLength else contentLength(url, headers)
         if (total <= 0) return@withContext false
         val chunks = ((total + CHUNK - 1) / CHUNK).toInt()
+        // Resume: a side file remembers which 1 MB parts are already complete.
+        val journal = File(target.path + ".chunks")
+        val finished: Set<Int> = if (target.isFile && target.length() == total && journal.isFile) {
+            journal.readLines().mapNotNull { it.trim().toIntOrNull() }.filter { it in 0 until chunks }.toSet()
+        } else {
+            journal.delete()
+            emptySet()
+        }
+        val todo = (0 until chunks).filter { it !in finished }
         val next = AtomicInteger(0)
-        val done = AtomicLong(0)
+        val done = AtomicLong(finished.sumOf { i -> minOf(total, (i + 1) * CHUNK) - i * CHUNK })
         val started = System.currentTimeMillis()
+        val resumedBytes = done.get()
         var lastReport = 0L
-        RandomAccessFile(target, "rw").use { it.setLength(total) }
+        RandomAccessFile(target, "rw").use { if (it.length() != total) it.setLength(total) }
         try {
             coroutineScope {
                 (0 until WORKERS).map {
@@ -47,8 +57,9 @@ object ParallelHttp {
                             while (true) {
                                 ensureActive()
                                 if (canceled()) throw InterruptedException("canceled")
-                                val index = next.getAndIncrement()
-                                if (index >= chunks) break
+                                val k = next.getAndIncrement()
+                                if (k >= todo.size) break
+                                val index = todo[k]
                                 val from = index * CHUNK
                                 val to = minOf(total, from + CHUNK) - 1
                                 var attempt = 0
@@ -56,6 +67,7 @@ object ParallelHttp {
                                     try {
                                         val got = fetchRange(url, headers, from, to, file, buf)
                                         done.addAndGet(got)
+                                        synchronized(journal) { journal.appendText("$index\n") }
                                         break
                                     } catch (e: java.io.IOException) {
                                         if (++attempt >= 3) throw e
@@ -67,7 +79,7 @@ object ParallelHttp {
                                     if (now - lastReport > 250) {
                                         lastReport = now
                                         val elapsed = (now - started).coerceAtLeast(1)
-                                        onProgress(done.get(), total, done.get() * 1000 / elapsed)
+                                        onProgress(done.get(), total, (done.get() - resumedBytes) * 1000 / elapsed)
                                     }
                                 }
                             }
@@ -75,7 +87,7 @@ object ParallelHttp {
                     }
                 }.awaitAll()
             }
-            done.get() == total
+            (done.get() == total).also { ok -> if (ok) journal.delete() }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             false

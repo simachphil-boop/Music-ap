@@ -328,4 +328,17 @@ object ThemeRegistry {
     val all: List<VesperTheme> = listOf(gothic, midnight, cyberpunk, minimalLight, rose, forest, amoled)
 
     fun byId(id: String?): VesperTheme = all.firstOrNull { it.id == id } ?: gothic
+
+    /**
+     * The theme actually shown. Mode 1 follows the phone: the light theme by day, the chosen theme at night
+     * (or Gothic if the chosen one is itself light). Mode 2 is always light.
+     */
+    fun resolve(id: String?, mode: Int, systemDark: Boolean): VesperTheme {
+        val chosen = byId(id)
+        return when (mode) {
+            1 -> if (systemDark) (if (chosen.palette.isDark) chosen else gothic) else minimalLight
+            2 -> minimalLight
+            else -> chosen
+        }
+    }
 }

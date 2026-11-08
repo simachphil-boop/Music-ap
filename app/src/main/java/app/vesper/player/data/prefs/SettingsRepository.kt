@@ -43,6 +43,8 @@ data class EqualizerSettings(
 
 data class AppSettings(
     val themeId: String = "gothic",
+    /** 0 = always the chosen theme, 1 = follow the system (light by day, chosen dark theme at night), 2 = always light. */
+    val themeMode: Int = 0,
     val musicSort: SortOrder = SortOrder(),
     val videoSort: SortOrder = SortOrder(SortField.DATE_ADDED, ascending = false),
     val pauseOnDisconnect: Boolean = true,
@@ -63,6 +65,7 @@ class SettingsRepository(private val context: Context) {
 
     private object Keys {
         val theme = stringPreferencesKey("theme")
+        val themeMode = intPreferencesKey("theme_mode")
         val musicSort = stringPreferencesKey("music_sort")
         val videoSort = stringPreferencesKey("video_sort")
         val pauseOnDisconnect = booleanPreferencesKey("pause_on_disconnect")
@@ -89,6 +92,7 @@ class SettingsRepository(private val context: Context) {
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
         AppSettings(
             themeId = p[Keys.theme] ?: "gothic",
+            themeMode = p[Keys.themeMode] ?: 0,
             musicSort = SortOrder.decode(p[Keys.musicSort], SortOrder()),
             videoSort = SortOrder.decode(p[Keys.videoSort], SortOrder(SortField.DATE_ADDED, false)),
             pauseOnDisconnect = p[Keys.pauseOnDisconnect] ?: true,
@@ -115,6 +119,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun current(): AppSettings = settings.first()
 
     suspend fun setTheme(id: String) = context.dataStore.edit { it[Keys.theme] = id }
+    suspend fun setThemeMode(mode: Int) = context.dataStore.edit { it[Keys.themeMode] = mode }
     suspend fun setMusicSort(order: SortOrder) = context.dataStore.edit { it[Keys.musicSort] = order.encode() }
     suspend fun setVideoSort(order: SortOrder) = context.dataStore.edit { it[Keys.videoSort] = order.encode() }
     suspend fun setPauseOnDisconnect(v: Boolean) = context.dataStore.edit { it[Keys.pauseOnDisconnect] = v }
