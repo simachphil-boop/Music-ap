@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -75,6 +76,7 @@ import kotlin.math.sin
 fun vibeIcon(vibe: Vibe): ImageVector = when (vibe.id) {
     "my" -> Icons.Rounded.GraphicEq
     "fav" -> Icons.Rounded.Favorite
+    "hits" -> Icons.Rounded.Whatshot
     "new" -> Icons.Rounded.NewReleases
     "old" -> Icons.Rounded.History
     "energetic" -> Icons.Rounded.FlashOn
@@ -152,7 +154,7 @@ fun WaveSection() {
                             when {
                                 wave.starting -> "Подбираю музыку…"
                                 wave.active -> "Пропускайте — волна учится"
-                                wave.mode == app.vesper.player.data.wave.WaveMode.ONLINE -> "Из интернета, по вашему вкусу"
+                                wave.mode == app.vesper.player.data.wave.WaveMode.ONLINE -> "Ваш вкус и популярное"
                                 else -> "Из ваших загрузок"
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -194,7 +196,7 @@ fun WaveSection() {
         ) {
             items(
                 Vibes.all.filter { it.id != Vibes.myWave.id }
-                    .sortedBy { listOf(VibeGroup.MOOD, VibeGroup.ACTIVITY, VibeGroup.CHARACTER).indexOf(it.group) },
+                    .sortedBy { if (it.id == Vibes.hits.id) -1 else listOf(VibeGroup.MOOD, VibeGroup.ACTIVITY, VibeGroup.CHARACTER).indexOf(it.group) },
                 key = { it.id },
             ) { vibe ->
                 VibeTile(

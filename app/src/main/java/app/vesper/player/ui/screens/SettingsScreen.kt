@@ -129,6 +129,14 @@ fun SettingsScreen() {
                 s.ambience,
             ) { vm.setAmbience(it) }
         }
+        item {
+            ToggleRow(
+                "Визуализатор в плеере",
+                "Столбики внизу плеера двигаются под звук, который играет на самом деле",
+                Icons.Rounded.GraphicEq,
+                s.visualizer,
+            ) { vm.setVisualizer(it) }
+        }
 
         item { Group("Перенос и коллекции") }
         item {

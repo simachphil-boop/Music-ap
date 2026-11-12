@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -196,6 +197,9 @@ fun NowPlayingScreen(onCollapse: () -> Unit) {
     ) {
         if (settings.ambience) {
             app.vesper.player.ui.theme.ThemeAmbience(Modifier.fillMaxSize(), playing = state.isPlaying, intensity = 1.2f)
+        }
+        if (settings.visualizer) {
+            SpectrumVisualizer(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.26f), playing = state.isPlaying)
         }
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),

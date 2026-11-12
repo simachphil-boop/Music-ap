@@ -28,6 +28,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.vesper.player.appContainer
+import app.vesper.player.playback.toMediaItem
 import app.vesper.player.data.db.VideoEntity
 import app.vesper.player.data.media.ProbeResult
 import app.vesper.player.ui.theme.ThemeRegistry
@@ -95,6 +96,72 @@ class VideoPlayerActivity : ComponentActivity() {
     private var lastOnlineRetryAt = 0L
     private val videoPrefs by lazy { getSharedPreferences("floya_video", Context.MODE_PRIVATE) }
 
+    // ---- sound in the background ----------------------------------------------------------------
+    /** When on, the sound keeps playing after the screen is turned off or the app is left. */
+    var backgroundSound by mutableStateOf(true)
+        private set
+    /** Media id under which the music player is carrying this video's sound right now. */
+    private var soundHandedTo: String? = null
+
+    fun toggleBackgroundSound() {
+        backgroundSound = !backgroundSound
+        videoPrefs.edit().putBoolean("background_sound", backgroundSound).apply()
+    }
+
+    /** Hands the sound to the music player (it has the notification and lock-screen buttons). */
+    private fun handSoundOver() {
+        if (!backgroundSound || !player.isPlaying) return
+        val pos = player.currentPosition.coerceAtLeast(0)
+        val url = onlineUrl
+        val item = if (url != null) {
+            val id = app.vesper.player.playback.YouTubeFast.videoId(url)
+            app.vesper.player.playback.OnlineItem(
+                pageUrl = url,
+                title = onlineTitle.ifBlank { "Видео" },
+                artist = "Видео · звук в фоне",
+                durationSec = (player.duration.coerceAtLeast(0) / 1000).toInt(),
+                thumbnail = id?.let { "https://i.ytimg.com/vi/$it/hqdefault.jpg" },
+            ).toMediaItem()
+        } else {
+            val v = currentVideo() ?: return
+            val uri = Uri.parse(v.uri)
+            MediaItem.Builder()
+                .setMediaId("video:${v.id}")
+                .setUri(uri)
+                .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(v.title)
+                        .setArtist("Видео · звук в фоне")
+                        .setIsPlayable(true)
+                        .setIsBrowsable(false)
+                        .setExtras(Bundle().apply {
+                            putString(app.vesper.player.playback.EXTRA_TRACK_URI, v.uri)
+                            putLong(app.vesper.player.playback.EXTRA_DURATION, v.durationMs)
+                        })
+                        .build(),
+                )
+                .build()
+        }
+        player.pause()
+        soundHandedTo = item.mediaId
+        container.player.playVideoSound(item, pos)
+    }
+
+    /** Back on screen: take the sound back and continue the picture from where the sound got to. */
+    private fun takeSoundBack() {
+        val id = soundHandedTo ?: return
+        soundHandedTo = null
+        val pos = container.player.takeVideoSound(id) ?: return
+        player.seekTo(pos)
+        player.play()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        takeSoundBack()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -147,6 +214,7 @@ class VideoPlayerActivity : ComponentActivity() {
             }
         })
 
+        backgroundSound = videoPrefs.getBoolean("background_sound", true)
         applyFullscreen(true)
         loadPlaylist()
 
@@ -472,7 +540,11 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         saveCurrentPosition()
-        if (!isInPictureInPictureMode) player.pause()
+        if (!isInPictureInPictureMode) {
+            // Leaving for good (back button) stops everything; screen off / another app keeps the sound.
+            if (!isFinishing && !isChangingConfigurations) handSoundOver()
+            player.pause()
+        }
     }
 
     override fun onDestroy() {

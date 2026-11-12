@@ -77,6 +77,7 @@ object Genres {
 
 object Vibes {
     val myWave = Vibe("my", "Моя волна", "Бесконечный поток по вашему вкусу", VibeGroup.CHARACTER, VibeStrategy.TASTE)
+    val hits = Vibe("hits", "Популярное", "Хиты, которые слушают сейчас", VibeGroup.CHARACTER, VibeStrategy.SOUND)
     val favorites = Vibe("fav", "Любимое", "То, что вы слушаете чаще всего", VibeGroup.CHARACTER, VibeStrategy.FAVORITES)
     val discovery = Vibe("new", "Незнакомое", "Треки, которые вы ещё не слушали", VibeGroup.CHARACTER, VibeStrategy.DISCOVERY)
     val forgotten = Vibe("old", "Забытое", "Давно не звучало", VibeGroup.CHARACTER, VibeStrategy.FORGOTTEN)
@@ -130,7 +131,7 @@ object Vibes {
     )
 
     val all = listOf(
-        myWave, favorites, discovery, forgotten,
+        myWave, hits, favorites, discovery, forgotten,
         energetic, happy, calm, sad, dark,
         workout, focus, drive, party, relax, sleep,
     )
@@ -152,6 +153,7 @@ object Vibes {
         "sleep" -> listOf("музыка для сна", "sleep music", "calm piano sleep", "ambient sleep", "rain sounds music")
         "new" -> listOf("новинки музыки", "new music this week", "новые песни", "new songs", "fresh releases")
         "old" -> listOf("хиты 2000-х", "хиты 2010-х", "2000s hits", "2010s hits", "хиты 90-х")
+        "hits" -> (java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)).let { y -> listOf("хиты $y", "топ песни $y", "популярные песни сейчас", "top hits $y", "чарт $y", "новинки $y хиты") }
         else -> listOf("популярные песни", "top hits", "музыка новинки", "best songs", "хиты")
     }
 

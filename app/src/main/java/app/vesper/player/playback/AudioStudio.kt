@@ -113,6 +113,7 @@ class StudioProcessor : BaseAudioProcessor() {
     override fun queueInput(inputBuffer: ByteBuffer) {
         val remaining = inputBuffer.remaining()
         if (remaining == 0) return
+        if (SpectrumTap.active) SpectrumTap.feed(inputBuffer, sampleRate)
         val out = replaceOutputBuffer(remaining)
         val mix = reverbMix
         val spin = eightD

@@ -101,6 +101,89 @@ class WebSearch(context: Context, private val downloader: Downloader) {
 
     suspend fun other(query: String, source: SearchSource): Result<List<SearchResult>> = downloader.search(query, source)
 
+    /**
+     * "Radio" of a song: about 50 tracks YouTube Music itself would play after it (similar sound,
+     * what the same listeners like). One quick request; empty list if it didn't work.
+     */
+    suspend fun radio(pageUrl: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        val id = app.vesper.player.playback.YouTubeFast.videoId(pageUrl) ?: return@withContext emptyList()
+        runCatching {
+            val body = JSONObject()
+                .put("context", musicContext())
+                .put("videoId", id)
+                .put("playlistId", "RDAMVM$id")
+                .put("isAudioOnly", true)
+                .put("enablePersistentPlaylistPanel", true)
+                .put("tunerSettingValue", "AUTOMIX_SETTING_NORMAL")
+                .put(
+                    "watchEndpointMusicSupportedConfigs",
+                    JSONObject().put(
+                        "watchEndpointMusicConfig",
+                        JSONObject().put("hasPersistentPlaylistPanel", true).put("musicVideoType", "MUSIC_VIDEO_TYPE_ATV"),
+                    ),
+                )
+            val text = musicPost("next", body) ?: return@runCatching emptyList()
+            val renderers = ArrayList<JSONObject>()
+            collect(JSONObject(text), "playlistPanelVideoRenderer", renderers)
+            renderers.mapNotNull { parsePanelItem(it) }.filter { !it.url.endsWith("=$id") }.distinctBy { it.url }
+        }.getOrDefault(emptyList())
+    }
+
+    internal fun parsePanelItem(r: JSONObject): SearchResult? {
+        val videoId = r.optString("videoId").takeIf { it.length == 11 } ?: return null
+        fun runs(key: String): List<String> {
+            val arr = r.optJSONObject(key)?.optJSONArray("runs") ?: return emptyList()
+            return (0 until arr.length()).map { arr.optJSONObject(it)?.optString("text").orEmpty() }
+        }
+        val title = runs("title").joinToString("").ifBlank { return null }
+        val byline = runs("longBylineText").joinToString("").ifBlank { runs("shortBylineText").joinToString("") }
+        val parts = byline.split(" • ", " · ").map { it.trim() }.filter { it.isNotBlank() }
+        val artist = parts.getOrNull(0).orEmpty()
+        val album = parts.getOrNull(1)?.takeIf { !it.contains("просмотр") && !it.contains("views") && !it.contains("лайк") && !it.contains("likes") }.orEmpty()
+        val thumbs = r.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
+        val thumb = thumbs?.optJSONObject(thumbs.length() - 1)?.optString("url")?.takeIf { it.isNotBlank() }
+            ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+        return SearchResult(
+            url = "https://music.youtube.com/watch?v=$videoId",
+            title = title,
+            author = listOf(artist, album).filter { it.isNotBlank() }.joinToString(" · "),
+            durationSec = runs("lengthText").firstOrNull()?.let { toSeconds(it) } ?: 0,
+            thumbnail = thumb,
+            source = SearchSource.YOUTUBE,
+        )
+    }
+
+    private fun musicContext() = JSONObject().put(
+        "client",
+        JSONObject().put("clientName", "WEB_REMIX").put("clientVersion", CLIENT_VERSION).put("hl", "ru").put("gl", "RU"),
+    )
+
+    private fun musicPost(endpoint: String, body: JSONObject): String? {
+        val conn = (URL("https://music.youtube.com/youtubei/v1/$endpoint?prettyPrint=false").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = 8_000
+            readTimeout = 12_000
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Origin", "https://music.youtube.com")
+            setRequestProperty("Referer", "https://music.youtube.com/")
+            setRequestProperty("X-Youtube-Client-Name", "67")
+            setRequestProperty("X-Youtube-Client-Version", CLIENT_VERSION)
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+        }
+        return try {
+            conn.outputStream.use { it.write(body.toString().toByteArray()) }
+            if (conn.responseCode != 200) null else conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** Songs only from the YouTube Music catalogue, no slow fallback (used by the Wave). */
+    suspend fun songsFast(query: String): List<SearchResult> = withContext(Dispatchers.IO) {
+        runCatching { ytMusic(query.trim(), SONGS_PARAMS) }.getOrDefault(emptyList())
+    }
+
     // --- Recent queries --------------------------------------------------------------------------
 
     fun history(): List<String> = prefs.getString(KEY_HISTORY, "").orEmpty().lines().filter { it.isNotBlank() }

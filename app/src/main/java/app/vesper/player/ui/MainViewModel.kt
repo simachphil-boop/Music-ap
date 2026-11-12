@@ -457,6 +457,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setAmbience(v: Boolean) = viewModelScope.launch { settingsRepo.setAmbience(v) }
+    fun setVisualizer(v: Boolean) = viewModelScope.launch { settingsRepo.setVisualizer(v) }
 
     fun message(text: String) {
         _messages.tryEmit(text)

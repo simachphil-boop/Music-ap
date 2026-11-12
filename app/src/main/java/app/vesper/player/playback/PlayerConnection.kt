@@ -27,6 +27,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
+/** Queue owner while a video's sound plays in the background. */
+const val OWNER_VIDEO = "video"
+
 data class QueueEntry(
     val key: String,
     val trackId: Long,
@@ -259,6 +262,31 @@ class PlayerConnection(
             c.prepare()
             c.play()
         }
+    }
+
+    /** Continues a video as sound only, from [positionMs] (screen off or app in the background). */
+    fun playVideoSound(item: MediaItem, positionMs: Long) {
+        withController { c ->
+            c.setMediaItems(listOf(item), 0, positionMs.coerceAtLeast(0))
+            setShuffleFlag(false)
+            setOriginalOrder(emptyList())
+            _state.update { it.copy(queueOwner = OWNER_VIDEO) }
+            c.prepare()
+            c.play()
+        }
+    }
+
+    /**
+     * Gives the sound back to the video player: stops it here and tells where it got to
+     * (null if something else is playing by now).
+     */
+    fun takeVideoSound(mediaId: String): Long? {
+        val c = controller?.takeIf { it.isConnected } ?: return null
+        if (c.currentMediaItem?.mediaId != mediaId) return null
+        val pos = c.currentPosition.coerceAtLeast(0)
+        c.pause()
+        c.clearMediaItems()
+        return pos
     }
 
     fun addOnline(items: List<OnlineItem>) {

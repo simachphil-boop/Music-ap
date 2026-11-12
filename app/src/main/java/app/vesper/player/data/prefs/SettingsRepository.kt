@@ -63,6 +63,7 @@ data class AppSettings(
     val videoSpeed: Float = 1f,
     /** Animated themed background (embers and bats, stars, petals…). */
     val ambience: Boolean = true,
+    val visualizer: Boolean = true,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -88,6 +89,7 @@ class SettingsRepository(private val context: Context) {
         val virtualizer = intPreferencesKey("virtualizer")
         val volumeBoost = intPreferencesKey("volume_boost")
         val ambience = booleanPreferencesKey("ambience")
+        val visualizer = booleanPreferencesKey("visualizer")
         val onboarding = booleanPreferencesKey("onboarding_done")
         val videoSpeed = stringPreferencesKey("video_speed")
         val queueIndex = intPreferencesKey("queue_index")
@@ -119,6 +121,7 @@ class SettingsRepository(private val context: Context) {
                 volumeBoost = p[Keys.volumeBoost] ?: 0,
             ),
             ambience = p[Keys.ambience] ?: true,
+            visualizer = p[Keys.visualizer] ?: true,
             onboardingDone = p[Keys.onboarding] ?: false,
             videoSpeed = p[Keys.videoSpeed]?.toFloatOrNull() ?: 1f,
         )
@@ -154,6 +157,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setVirtualizer(v: Int) = context.dataStore.edit { it[Keys.virtualizer] = v }
     suspend fun setVolumeBoost(v: Int) = context.dataStore.edit { it[Keys.volumeBoost] = v }
     suspend fun setAmbience(v: Boolean) = context.dataStore.edit { it[Keys.ambience] = v }
+    suspend fun setVisualizer(v: Boolean) = context.dataStore.edit { it[Keys.visualizer] = v }
 
     // --- Queue position (written frequently by the playback service) ---
     suspend fun saveQueuePosition(index: Int, positionMs: Long) = context.dataStore.edit {

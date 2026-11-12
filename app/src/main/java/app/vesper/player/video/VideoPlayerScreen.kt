@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BrightnessMedium
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Forward10
@@ -448,6 +449,20 @@ fun VideoPlayerScreen(
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                         )
                     }
+                    PressableIcon(
+                        Icons.Rounded.Headphones,
+                        if (activity.backgroundSound) "Звук в фоне включён" else "Звук в фоне выключен",
+                        onClick = {
+                            touch()
+                            activity.toggleBackgroundSound()
+                            android.widget.Toast.makeText(
+                                context,
+                                if (activity.backgroundSound) "Звук продолжит играть при выключенном экране" else "При выключенном экране видео остановится",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                        tint = if (activity.backgroundSound) c.accentBright else Color.White,
+                    )
                     PressableIcon(Icons.Rounded.Speed, "Скорость", onClick = { touch(); speedSheet = true }, tint = Color.White)
                     PressableIcon(Icons.Rounded.AspectRatio, "Соотношение сторон", onClick = { touch(); aspectSheet = true }, tint = Color.White)
                     PressableIcon(Icons.Rounded.PictureInPictureAlt, "Картинка в картинке", onClick = { activity.enterPip() }, tint = Color.White)

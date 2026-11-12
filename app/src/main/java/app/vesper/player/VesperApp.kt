@@ -64,7 +64,7 @@ class AppContainer(app: Application) {
     val downloader = Downloader(app, library, appScope)
     val transfer = PlaylistTransfer(database, downloader)
     val webSearch = WebSearch(app, downloader)
-    val wave = WaveEngine(app, database, player, downloader, mainScope)
+    val wave = WaveEngine(app, database, player, downloader, mainScope, webSearch)
     val editor = MediaEditor(app, library, appScope)
     val movies = MovieCollection(app, appScope)
     val account = AccountManager(app)

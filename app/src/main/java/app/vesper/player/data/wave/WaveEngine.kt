@@ -51,6 +51,7 @@ class WaveEngine(
     private val player: PlayerConnection,
     private val downloader: Downloader,
     private val scope: CoroutineScope,
+    web: app.vesper.player.data.search.WebSearch,
 ) {
     private val dao = db.wave()
     private val prefs = context.getSharedPreferences(app.vesper.player.data.account.Profile.prefs("floya_wave"), Context.MODE_PRIVATE)
@@ -63,15 +64,41 @@ class WaveEngine(
     private val recentPicks = ArrayDeque<Long>()
     private val recentArtists = ArrayDeque<String>()
     // Online mode
-    private val onlineSeen = HashSet<String>()
-    private var queries: List<String> = emptyList()
-    private var queryCursor = 0
+    private val online = OnlineWave(prefs, db, web)
+    private val appContext = context.applicationContext
+    private var heardEntry: QueueEntry? = null
+    private var heardSince = 0L
 
     private var extending = false
     private var profileFor: Long = -1
 
     init {
         scope.launch { player.state.collect { onPlayerState(it) } }
+        // Prepare the stream of the first saved song, so «Слушать волну» starts without a pause.
+        scope.launch {
+            kotlinx.coroutines.delay(2500)
+            if (_state.value.mode == WaveMode.ONLINE && !_state.value.active) {
+                online.peekSaved()?.let { app.vesper.player.playback.StreamResolver.prefetch(appContext, it.pageUrl, allowSlow = false) }
+            }
+        }
+    }
+
+    /** Learns from how each wave song was heard: most of it — more like this; skipped at once — less. */
+    private fun trackListening(active: Boolean, current: QueueEntry?) {
+        val prev = heardEntry
+        if (prev?.key == current?.key && (active || prev == null)) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val url = prev?.pageUrl
+        if (prev != null && url != null) {
+            val heard = now - heardSince
+            val enough = if (prev.durationMs > 0) minOf(60_000L, prev.durationMs / 2) else 60_000L
+            when {
+                heard >= enough -> online.onCompleted(url)
+                heard < 20_000 && current != null -> scope.launch { online.onSkipped(prev.artist) }
+            }
+        }
+        heardEntry = if (active) current else null
+        heardSince = now
     }
 
     fun setMode(mode: WaveMode) {
@@ -82,6 +109,7 @@ class WaveEngine(
     private fun onPlayerState(s: PlayerUiState) {
         val active = s.queueOwner == OWNER
         if (active != _state.value.active) _state.update { it.copy(active = active) }
+        trackListening(active, s.current)
         val currentId = s.current?.trackId ?: -1L
         if (currentId != profileFor) {
             profileFor = currentId
@@ -99,7 +127,7 @@ class WaveEngine(
                 try {
                     if (online) {
                         val exclude = s.queue.mapNotNull { it.pageUrl }.toSet()
-                        player.addOnline(pickOnline(vibe, 8, exclude))
+                        player.addOnline(online.pick(vibe, 8, exclude))
                     } else {
                         val picks = pickDownloads(vibe, 10, s.queue.map { it.trackId }.toSet())
                         if (picks.isNotEmpty()) player.addToQueue(picks, silent = true)
@@ -123,16 +151,17 @@ class WaveEngine(
             try {
                 when (_state.value.mode) {
                     WaveMode.ONLINE -> {
-                        onlineSeen.clear()
-                        queries = buildQueries(vibe)
-                        queryCursor = 0
-                        val picks = pickOnline(vibe, 10, emptySet())
+                        online.reset(vibe)
+                        // A saved selection plays at once; fresh music is fetched while it is already on.
+                        val instant = online.hasReady(6)
+                        val picks = online.pick(vibe, if (instant) 6 else 10, emptySet())
                         if (picks.isEmpty()) {
                             player.notify("Не удалось найти музыку — проверьте интернет или включите «Мои загрузки»")
                             return@launch
                         }
                         _state.update { it.copy(vibe = vibe) }
                         player.playOnline(picks, 0, owner = OWNER)
+                        if (instant) scope.launch { runCatching { online.refresh(vibe, picks.map { it.pageUrl }.toSet()) } }
                     }
                     WaveMode.DOWNLOADS -> {
                         recentPicks.clear()
@@ -173,6 +202,7 @@ class WaveEngine(
         if (artist.isBlank()) return
         val list = likedArtists().filterNot { it.equals(artist, true) }
         prefs.edit().putString(KEY_LIKED, (listOf(artist) + list).take(40).joinToString("\n")).apply()
+        entry.pageUrl?.let { online.onLiked(it) }
         player.notify("Учту: больше похожего на $artist")
     }
 
@@ -182,6 +212,7 @@ class WaveEngine(
         scope.launch {
             dao.clearStats()
             prefs.edit().remove(KEY_BANNED).remove(KEY_LIKED).apply()
+            online.forget()
             player.notify("Обучение волны сброшено")
         }
     }
@@ -192,61 +223,6 @@ class WaveEngine(
     // ---------------------------------------------------------------------------------------------
     // Online
     // ---------------------------------------------------------------------------------------------
-
-    private suspend fun buildQueries(vibe: Vibe): List<String> {
-        val base = Vibes.onlineQueries(vibe)
-        val downloaded = db.tracks().getAll().filter { it.source == MediaSource.DOWNLOADED }
-        val topArtists = downloaded
-            .filter { !it.artist.startsWith("Неизвестн") }
-            .groupBy { it.artist }
-            .entries.sortedByDescending { (_, list) -> list.sumOf { it.playCount + if (it.favorite) 5 else 0 } + list.size }
-            .map { it.key }
-            .take(10)
-        val seeds = (likedArtists() + topArtists).distinctBy { it.lowercase() }
-        val list = when (vibe.strategy) {
-            VibeStrategy.TASTE -> seeds.take(12) + base.take(2)
-            VibeStrategy.FAVORITES -> seeds.ifEmpty { base }
-            else -> base
-        }
-        return list.ifEmpty { base }.shuffled()
-    }
-
-    private suspend fun pickOnline(vibe: Vibe, count: Int, exclude: Set<String>): List<OnlineItem> {
-        if (queries.isEmpty()) queries = buildQueries(vibe)
-        val banned = bannedUrls()
-        val longForm = vibe.id in setOf("focus", "sleep", "relax")
-        val maxDuration = if (longForm) 1800 else 600
-        val out = ArrayList<OnlineItem>()
-        var attempts = 0
-        while (out.size < count && attempts < 4) {
-            val q = queries[queryCursor % queries.size]
-            queryCursor++
-            attempts++
-            val results = downloader.search(q, SearchSource.YOUTUBE).getOrNull() ?: continue
-            val authorsInBatch = HashSet<String>()
-            results
-                .filter { it.durationSec in 90..maxDuration }
-                .filter { longForm || !isCompilation(it.title) }
-                .filter { it.url !in onlineSeen && it.url !in banned && it.url !in exclude }
-                .shuffled()
-                .forEach { r ->
-                    if (out.size >= count) return@forEach
-                    val author = r.author.lowercase()
-                    if (author.isNotBlank() && !authorsInBatch.add(author)) return@forEach
-                    out += r.toOnline()
-                    onlineSeen += r.url
-                }
-        }
-        return out.shuffled()
-    }
-
-    private fun isCompilation(title: String): Boolean {
-        val t = title.lowercase()
-        return listOf("mix", "микс", "playlist", "плейлист", "full album", "сборник", "подборка", "compilation", "1 hour", "1 час", "hours", "часа", "top 10", "топ 10", "non-stop", "нон-стоп")
-            .any { t.contains(it) }
-    }
-
-    private fun SearchResult.toOnline() = OnlineItem(url, title, author, durationSec, thumbnail)
 
     // ---------------------------------------------------------------------------------------------
     // Downloads (local files saved by the app)
