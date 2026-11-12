@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -146,7 +147,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val shown = if (dedupe) SmartLibrary.dedupe(visible) else visible
         // trackById keeps every track, so playlists and the queue still find hidden copies.
         buildLibrary(shown, sort).copy(folders = folders, hiddenDuplicates = visible.size - shown.size, trackById = tracks.associateBy { it.id })
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, LibraryState())
+    }
+        // Grouping, sorting and duplicate search for the whole library — never on the UI thread.
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, LibraryState())
 
     fun setFolderIncluded(folder: String, included: Boolean) = viewModelScope.launch { settingsRepo.setFolderIncluded(folder, included) }
     override fun onCleared() {
@@ -183,7 +187,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             favorites = list.filter { it.favorite }.sortedBy { it.title.lowercase() },
             byId = list.associateBy { it.id },
         )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, VideoState())
+    }.flowOn(kotlinx.coroutines.Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, VideoState())
 
     val playlists: StateFlow<List<PlaylistSummary>> =
         repo.playlists.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -191,7 +195,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** First few media ids per playlist — used for mosaic covers. */
     val playlistPreview: StateFlow<Map<Long, List<Long>>> = repo.playlistItems.map { items ->
         items.groupBy { it.playlistId }.mapValues { (_, v) -> v.sortedBy { it.position }.take(4).map { it.mediaId } }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    }.flowOn(kotlinx.coroutines.Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     private fun buildLibrary(tracks: List<TrackEntity>, sort: SortOrder): LibraryState {
         val byTitle = String.CASE_INSENSITIVE_ORDER

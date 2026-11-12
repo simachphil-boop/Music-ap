@@ -203,7 +203,7 @@ fun TransferredList(bottom: Dp, onTransfer: () -> Unit) {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.name, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${p.source} · ${tracksCount(p.itemCount)}", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                    Text("${app.vesper.player.data.transfer.PlaylistSource.label(p.source)} · ${tracksCount(p.itemCount)}", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 }
                 PressableIcon(
                     Icons.Rounded.PlayArrow, "Слушать",
@@ -259,7 +259,7 @@ fun OnlinePlaylistScreen(id: Long, onBack: () -> Unit) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Cover(playlist.coverUrl, playlist.name, 180.dp)
                 Spacer(Modifier.height(14.dp))
-                OverlineText("Перенесено из ${playlist.source}", color = c.ornament)
+                OverlineText(app.vesper.player.data.transfer.PlaylistSource.caption(playlist.source), color = c.ornament)
                 Text(playlist.name, style = MaterialTheme.typography.headlineLarge, color = c.textPrimary, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(tracksCount(items.size), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
                 Spacer(Modifier.height(14.dp))

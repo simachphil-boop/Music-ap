@@ -24,6 +24,24 @@ data class TransferredPlaylist(
 
 class TransferException(message: String) : Exception(message)
 
+/** How a saved online playlist's origin is shown to the user (internal tags never reach the screen). */
+object PlaylistSource {
+    fun label(source: String): String = when (source) {
+        "cloud" -> "Из аккаунта"
+        "cloud-fav" -> "Избранное из аккаунта"
+        "assistant" -> "Подбор"
+        "" -> "Онлайн"
+        else -> source
+    }
+
+    fun caption(source: String): String = when (source) {
+        "cloud", "cloud-fav" -> "Из вашего аккаунта · играет онлайн"
+        "assistant" -> "Собрано подбором · играет онлайн"
+        "" -> "Онлайн-плейлист"
+        else -> "Перенесено из $source"
+    }
+}
+
 /**
  * Brings playlists over from Spotify, Yandex Music, Deezer, YouTube and SoundCloud.
  * Catalogue services only give "artist — title"; those tracks are found on YouTube

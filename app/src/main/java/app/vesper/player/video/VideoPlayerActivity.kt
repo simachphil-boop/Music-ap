@@ -74,6 +74,27 @@ class VideoPlayerActivity : ComponentActivity() {
     var rotationLocked by mutableStateOf(false)
         private set
 
+    // ---- online video state (read by the screen) ----------------------------------------------
+    /** Page being streamed, or null for files on the phone. */
+    var onlineUrl by mutableStateOf<String?>(null)
+        private set
+    var onlineTitle by mutableStateOf("")
+        private set
+    /** True while the links are being fetched (before the player starts buffering). */
+    var onlineLoading by mutableStateOf(false)
+        private set
+    var onlineError by mutableStateOf<String?>(null)
+        private set
+    /** Picture heights this video offers (empty when the quality can't be chosen). */
+    var onlineHeights by mutableStateOf<List<Int>>(emptyList())
+        private set
+    var onlineHeight by mutableStateOf(0)
+        private set
+    private var onlineJob: Job? = null
+    private var onlineFast = false
+    private var lastOnlineRetryAt = 0L
+    private val videoPrefs by lazy { getSharedPreferences("floya_video", Context.MODE_PRIVATE) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -92,6 +113,13 @@ class VideoPlayerActivity : ComponentActivity() {
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
+            // Start after 1 s of video is buffered (the default waits for 2.5 s), keep up to a minute ahead.
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(20_000, 60_000, 1_000, 2_500)
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build(),
+            )
             .build()
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -106,6 +134,16 @@ class VideoPlayerActivity : ComponentActivity() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 restorePositionForCurrent()
                 markWatched()
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                // Online links expire and the quick route can be refused: get fresh links once
+                // (through the thorough route) and continue from the same second.
+                val url = onlineUrl ?: return
+                val now = System.currentTimeMillis()
+                if (now - lastOnlineRetryAt < 60_000) return
+                lastOnlineRetryAt = now
+                playOnline(url, onlineTitle, onlineHeight.takeIf { it > 0 }, player.currentPosition.coerceAtLeast(0), forceSlow = true)
             }
         })
 
@@ -134,60 +172,135 @@ class VideoPlayerActivity : ComponentActivity() {
         loadPlaylist()
     }
 
-    private fun playOnline(pageUrl: String, title: String) {
-        android.widget.Toast.makeText(this, "Загружаю видео…", android.widget.Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
+    /** 1080p on Wi‑Fi, 720p on mobile data — unless the user picked a quality before. */
+    private fun defaultOnlineHeight(): Int {
+        videoPrefs.getInt("online_height", 0).takeIf { it > 0 }?.let { return it }
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val metered = runCatching { cm?.isActiveNetworkMetered }.getOrNull() ?: true
+        return if (metered) 720 else 1080
+    }
+
+    /** Switches the picture quality of the online video and continues from the same place. */
+    fun setOnlineQuality(height: Int) {
+        val url = onlineUrl ?: return
+        if (height == onlineHeight) return
+        videoPrefs.edit().putInt("online_height", height).apply()
+        playOnline(url, onlineTitle, height, player.currentPosition.coerceAtLeast(0))
+    }
+
+    fun retryOnline() {
+        val url = onlineUrl ?: return
+        playOnline(url, onlineTitle, onlineHeight.takeIf { it > 0 }, player.currentPosition.coerceAtLeast(0))
+    }
+
+    private fun progressive(url: String, headers: Map<String, String>, userAgent: String?, length: Long, title: String): androidx.media3.exoplayer.source.MediaSource {
+        val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(8_000)
+            .setReadTimeoutMs(12_000)
+            .setDefaultRequestProperties(headers)
+        if (userAgent != null) http.setUserAgent(userAgent)
+        val factory = if (length > 0) {
+            androidx.media3.datasource.DataSource.Factory { app.vesper.player.playback.ChunkedDataSource(http.createDataSource(), length) }
+        } else {
+            http
+        }
+        val item = MediaItem.Builder()
+            .setUri(Uri.parse(url))
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+            .build()
+        return androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(factory).createMediaSource(item)
+    }
+
+    /** YouTube: one quick request for direct picture + sound links (about a second instead of 5–10). */
+    private suspend fun fastSource(pageUrl: String, title: String, height: Int): androidx.media3.exoplayer.source.MediaSource? {
+        val v = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { app.vesper.player.playback.YouTubeFast.video(pageUrl, height) }.getOrNull()
+        } ?: return null
+        val name = title.ifBlank { v.title }
+        if (onlineTitle.isBlank()) onlineTitle = name
+        onlineHeights = v.heights.filter { it in 144..2160 }
+        onlineHeight = v.video.height
+        return androidx.media3.exoplayer.source.MergingMediaSource(
+            progressive(v.video.url, emptyMap(), v.userAgent, v.video.contentLength, name),
+            progressive(v.audio.url, emptyMap(), v.userAgent, v.audio.contentLength, name),
+        )
+    }
+
+    /** Any other site, or a YouTube video the quick route couldn't open: yt-dlp finds the links. */
+    private suspend fun slowSource(pageUrl: String, title: String, height: Int): androidx.media3.exoplayer.source.MediaSource {
+        if (!app.vesper.player.data.edit.FfmpegTool.init(this)) {
+            error("Движок не запустился: ${app.vesper.player.data.edit.FfmpegTool.lastError}")
+        }
+        val info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val request = com.yausername.youtubedl_android.YoutubeDLRequest(app.vesper.player.playback.StreamResolver.normalizePage(pageUrl)).apply {
+                addOption("--no-playlist")
+                addOption(
+                    "-f",
+                    "bv*[height<=$height][vcodec^=avc1][protocol^=http]+ba[ext=m4a][protocol^=http]/" +
+                        "bv*[height<=$height][ext=mp4][protocol^=http]+ba[ext=m4a][protocol^=http]/" +
+                        "bv*[height<=$height][protocol^=http]+ba[protocol^=http]/b[ext=mp4][protocol^=http]/b[protocol^=http]/b",
+                )
+                // Reuse yt-dlp's cache between runs and skip manifests we don't play.
+                app.vesper.player.playback.YtDlpTuning.apply(this@VideoPlayerActivity, this, skipManifests = true)
+                val cookies = app.vesper.player.data.download.CookieStore
+                if (cookies.hasAny(this@VideoPlayerActivity)) addOption("--cookies", cookies.file(this@VideoPlayerActivity).absolutePath)
+            }
+            com.yausername.youtubedl_android.YoutubeDL.getInstance().getInfo(request)
+        }
+        val name = info.title ?: title
+        if (onlineTitle.isBlank()) onlineTitle = name
+        val formats = info.requestedFormats.orEmpty().filter { it.url != null }
+        return if (formats.size >= 2) {
+            androidx.media3.exoplayer.source.MergingMediaSource(
+                *formats.map { progressive(it.url!!, it.httpHeaders.orEmpty(), null, 0, name) }.toTypedArray(),
+            )
+        } else {
+            progressive(info.url ?: error("Видео не найдено"), info.httpHeaders.orEmpty(), null, 0, name)
+        }
+    }
+
+    private fun playOnline(pageUrl: String, title: String, height: Int? = null, startMs: Long = 0, forceSlow: Boolean = false) {
+        onlineJob?.cancel()
+        onlineUrl = pageUrl
+        onlineTitle = title
+        onlineError = null
+        onlineLoading = true
+        onlineJob = lifecycleScope.launch {
             try {
-                if (!app.vesper.player.data.edit.FfmpegTool.init(this@VideoPlayerActivity)) {
-                    error("Движок не запустился: ${app.vesper.player.data.edit.FfmpegTool.lastError}")
+                val want = height ?: defaultOnlineHeight()
+                val fast = if (forceSlow) null else fastSource(pageUrl, title, want)
+                onlineFast = fast != null
+                if (fast == null) {
+                    // The thorough route can't list qualities — hide the quality button.
+                    onlineHeights = emptyList()
+                    onlineHeight = want
                 }
-                val info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val request = com.yausername.youtubedl_android.YoutubeDLRequest(pageUrl).apply {
-                        addOption("--no-playlist")
-                        addOption(
-                            "-f",
-                            "bv*[height<=1080][ext=mp4][protocol^=http]+ba[ext=m4a][protocol^=http]/" +
-                                "bv*[height<=1080][protocol^=http]+ba[protocol^=http]/b[ext=mp4][protocol^=http]/b[protocol^=http]",
-                        )
-                        val cookies = app.vesper.player.data.download.CookieStore
-                        if (cookies.hasAny(this@VideoPlayerActivity)) addOption("--cookies", cookies.file(this@VideoPlayerActivity).absolutePath)
-                    }
-                    com.yausername.youtubedl_android.YoutubeDL.getInstance().getInfo(request)
-                }
-                fun source(url: String, headers: Map<String, String>): androidx.media3.exoplayer.source.MediaSource {
-                    val http = androidx.media3.datasource.DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true)
-                        .setDefaultRequestProperties(headers)
-                    val item = MediaItem.Builder()
-                        .setUri(Uri.parse(url))
-                        .setMediaMetadata(MediaMetadata.Builder().setTitle(info.title ?: title).build())
-                        .build()
-                    return androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(http).createMediaSource(item)
-                }
-                val formats = info.requestedFormats.orEmpty().filter { it.url != null }
-                val mediaSource = if (formats.size >= 2) {
-                    androidx.media3.exoplayer.source.MergingMediaSource(
-                        *formats.map { source(it.url!!, it.httpHeaders.orEmpty()) }.toTypedArray(),
-                    )
-                } else {
-                    source(info.url ?: error("Видео не найдено"), info.httpHeaders.orEmpty())
-                }
-                player.setMediaSource(mediaSource)
+                val source = fast ?: slowSource(pageUrl, title, want)
+                player.setMediaSource(source, startMs)
                 player.prepare()
                 player.play()
+                onlineLoading = false
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                val msg = app.vesper.player.data.download.Downloader.describe(e).message
-                android.widget.Toast.makeText(this@VideoPlayerActivity, "Не удалось открыть видео: $msg", android.widget.Toast.LENGTH_LONG).show()
-                finish()
+                onlineLoading = false
+                onlineError = app.vesper.player.data.download.Downloader.describe(e).message
             }
         }
     }
 
     private fun loadPlaylist() {
         intent.getStringExtra(EXTRA_ONLINE_URL)?.let { url ->
+            lastOnlineRetryAt = 0
             playOnline(url, intent.getStringExtra(EXTRA_ONLINE_TITLE).orEmpty())
             return
         }
+        onlineJob?.cancel()
+        onlineUrl = null
+        onlineLoading = false
+        onlineError = null
+        onlineHeights = emptyList()
         val ids = intent.getLongArrayExtra(EXTRA_IDS)
         val start = intent.getIntExtra(EXTRA_INDEX, 0)
         val data = intent.data

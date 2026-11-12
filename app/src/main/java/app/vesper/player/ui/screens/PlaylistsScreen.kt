@@ -82,7 +82,7 @@ fun PlaylistsScreen() {
             PressableIcon(Icons.Rounded.SwapHoriz, "Перенести из Яндекс Музыки и других сервисов", onClick = { ui.open(app.vesper.player.ui.Routes.YANDEX_IMPORT) })
             PressableIcon(Icons.Rounded.Add, "Создать плейлист", onClick = { if (ui.playlistKind == 2) ui.transferVisible = true else creating = true })
         }
-        ChipRow(listOf("Музыка", "Видео", "Перенесённые"), ui.playlistKind, onSelect = { ui.playlistKind = it })
+        ChipRow(listOf("Музыка", "Видео", "Онлайн"), ui.playlistKind, onSelect = { ui.playlistKind = it })
         Spacer(Modifier.height(10.dp))
         if (ui.playlistKind == 2) {
             TransferredList(bottom = bottom, onTransfer = { ui.transferVisible = true })

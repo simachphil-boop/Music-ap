@@ -150,23 +150,7 @@ object YouTubeFast {
         val root = player(videoId, c) ?: return null
         val streaming = root.optJSONObject("streamingData") ?: return null
         val formats = streaming.optJSONArray("adaptiveFormats") ?: return null
-        var best: JSONObject? = null
-        var bestScore = -1L
-        for (i in 0 until formats.length()) {
-            val f = formats.optJSONObject(i) ?: continue
-            val mime = f.optString("mimeType")
-            if (!mime.startsWith("audio/")) continue
-            if (!f.has("url")) continue // ciphered — leave to yt-dlp
-            if (f.has("isDrc") && f.optBoolean("isDrc")) continue
-            // Prefer AAC/M4A: plays everywhere and can be saved without re-encoding.
-            // Economy = the smallest stream (~48–130 kbit/s), otherwise the best one.
-            val bitrate = f.optLong("bitrate")
-            val score = (if (economy) 10_000_000L - bitrate else bitrate) + if (mime.contains("mp4")) 20_000_000L else 0L
-            if (score > bestScore) {
-                bestScore = score
-                best = f
-            }
-        }
+        val best = pickAudio(formats, economy)
         val f = best ?: return null
         val expires = streaming.optLong("expiresInSeconds", 6 * 3600L).coerceAtLeast(600L)
         val details = root.optJSONObject("videoDetails")
@@ -183,12 +167,138 @@ object YouTubeFast {
         )
     }
 
+    /** Best sound stream; the original-language track when a video has dubs. */
+    internal fun pickAudio(formats: org.json.JSONArray, economy: Boolean): JSONObject? =
+        pickAudio(formats, economy, originalOnly = true) ?: pickAudio(formats, economy, originalOnly = false)
+
+    private fun pickAudio(formats: org.json.JSONArray, economy: Boolean, originalOnly: Boolean): JSONObject? {
+        var best: JSONObject? = null
+        var bestScore = Long.MIN_VALUE
+        for (i in 0 until formats.length()) {
+            val f = formats.optJSONObject(i) ?: continue
+            val mime = f.optString("mimeType")
+            if (!mime.startsWith("audio/")) continue
+            if (!f.has("url")) continue // ciphered — leave to yt-dlp
+            if (f.has("isDrc") && f.optBoolean("isDrc")) continue
+            // Videos with dubbed tracks: keep the original language.
+            val track = f.optJSONObject("audioTrack")
+            if (originalOnly && track != null && track.has("audioIsDefault") && !track.optBoolean("audioIsDefault")) continue
+            // Prefer AAC/M4A: plays everywhere and can be saved without re-encoding.
+            // Economy = the smallest stream (~48–130 kbit/s), otherwise the best one.
+            val bitrate = f.optLong("bitrate")
+            val score = (if (economy) 10_000_000L - bitrate else bitrate) + if (mime.contains("mp4")) 20_000_000L else 0L
+            if (score > bestScore) {
+                bestScore = score
+                best = f
+            }
+        }
+        return best
+    }
+
+    // ---- video ---------------------------------------------------------------------------------
+
+    /** One elementary stream (video-only or audio-only) with a plain link. */
+    data class Part(val url: String, val mimeType: String, val contentLength: Long, val height: Int) {
+        val isMp4: Boolean get() = mimeType.contains("mp4")
+    }
+
+    /** A video as two direct links (picture + sound), ready for the player or a parallel download. */
+    data class Video(
+        val video: Part,
+        val audio: Part,
+        val userAgent: String,
+        val title: String,
+        val author: String,
+        val durationSec: Int,
+        /** Every picture height this video can be played in, highest first. */
+        val heights: List<Int>,
+        val expiresAt: Long,
+    ) {
+        val headers: Map<String, String> get() = mapOf("User-Agent" to userAgent)
+    }
+
+    private val videoCache = java.util.concurrent.ConcurrentHashMap<String, Video>()
+
+    /**
+     * Direct picture + sound links in one quick request, no yt-dlp. Picks the best height not above
+     * [maxHeight]; H.264 is preferred because every phone decodes it in hardware. With [mp4Only] the
+     * result can be saved into an .mp4 without re-encoding (null if that height has no such stream).
+     */
+    fun video(pageUrl: String, maxHeight: Int, mp4Only: Boolean = false): Video? {
+        val id = videoId(pageUrl) ?: return null
+        val key = "$id|$maxHeight|$mp4Only"
+        videoCache[key]?.let { if (System.currentTimeMillis() < it.expiresAt) return it else videoCache.remove(key) }
+        for (client in clients) {
+            val v = runCatching { pickVideo(id, client, maxHeight, mp4Only) }.getOrNull() ?: continue
+            if (probe(v.video.url, v.userAgent)) {
+                if (videoCache.size > 40) videoCache.clear()
+                videoCache[key] = v
+                return v
+            }
+        }
+        return null
+    }
+
+    private fun pickVideo(videoId: String, c: Client, maxHeight: Int, mp4Only: Boolean): Video? {
+        val root = player(videoId, c) ?: return null
+        val streaming = root.optJSONObject("streamingData") ?: return null
+        val formats = streaming.optJSONArray("adaptiveFormats") ?: return null
+        val (picture, sound, heights) = choose(formats, maxHeight, mp4Only) ?: return null
+        fun part(f: JSONObject) = Part(
+            url = f.getString("url"),
+            mimeType = f.optString("mimeType"),
+            contentLength = f.optString("contentLength").toLongOrNull() ?: -1L,
+            height = f.optInt("height"),
+        )
+        val expires = streaming.optLong("expiresInSeconds", 6 * 3600L).coerceAtLeast(600L)
+        val details = root.optJSONObject("videoDetails")
+        return Video(
+            video = part(picture),
+            audio = part(sound),
+            userAgent = c.userAgent,
+            title = details?.optString("title").orEmpty(),
+            author = details?.optString("author").orEmpty().removeSuffix(" - Topic"),
+            durationSec = details?.optString("lengthSeconds")?.toIntOrNull() ?: 0,
+            heights = heights,
+            expiresAt = System.currentTimeMillis() + expires * 1000L / 2,
+        )
+    }
+
+    /** Picture stream, sound stream and all available heights for [maxHeight]; null if nothing fits. */
+    internal fun choose(formats: org.json.JSONArray, maxHeight: Int, mp4Only: Boolean): Triple<JSONObject, JSONObject, List<Int>>? {
+        val pictures = ArrayList<JSONObject>()
+        for (i in 0 until formats.length()) {
+            val f = formats.optJSONObject(i) ?: continue
+            if (f.optString("mimeType").startsWith("video/") && f.has("url") && f.optInt("height") > 0) pictures += f
+        }
+        if (pictures.isEmpty()) return null
+        val heights = pictures.map { it.optInt("height") }.distinct().sortedDescending()
+        val target = heights.firstOrNull { it <= maxHeight } ?: heights.last()
+        fun codecScore(mime: String) = when {
+            mime.contains("avc1") -> 3L
+            mime.contains("vp9") || mime.contains("vp09") -> 2L
+            else -> 1L // AV1: many phones can only decode it in software
+        }
+        val picture = pictures.filter { it.optInt("height") == target }
+            .filter { !mp4Only || it.optString("mimeType").contains("avc1") }
+            // Same codec: 30 fps before 60 (starts faster, half the traffic), then the better bitrate.
+            .maxByOrNull { f ->
+                codecScore(f.optString("mimeType")) * 1_000_000_000_000L +
+                    (if (f.optInt("fps", 30) <= 30) 100_000_000_000L else 0L) + f.optLong("bitrate")
+            } ?: return null
+        val sound = pickAudio(formats, economy = false) ?: return null
+        if (mp4Only && !sound.optString("mimeType").contains("mp4")) return null
+        return Triple(picture, sound, heights)
+    }
+
     /** One tiny ranged request — makes sure YouTube actually serves this link. */
-    private fun probe(s: Stream): Boolean = runCatching {
-        val conn = (URL(s.url).openConnection() as HttpURLConnection).apply {
+    private fun probe(s: Stream): Boolean = probe(s.url, s.userAgent)
+
+    private fun probe(url: String, userAgent: String): Boolean = runCatching {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 5_000
             readTimeout = 5_000
-            setRequestProperty("User-Agent", s.userAgent)
+            setRequestProperty("User-Agent", userAgent)
             setRequestProperty("Range", "bytes=0-1")
         }
         try {

@@ -22,6 +22,7 @@ import app.vesper.player.playback.StreamResolver
 import app.vesper.player.playback.YouTubeFast
 import app.vesper.player.playback.YtDlpTuning
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -492,7 +493,7 @@ class Downloader(
             if (isCanceled(task.id)) return@withContext
             if (!ensureEngine()) error("Не удалось запустить движок загрузки (${FfmpegTool.lastError})")
             val fast = try {
-                fastYouTubeAudio(task, workDir)
+                fastYouTubeAudio(task, workDir) ?: fastYouTubeVideo(task, workDir)
             } catch (e: NetworkInterrupted) {
                 throw e
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -750,6 +751,76 @@ class Downloader(
         }
         if (code != 0 || !out.isFile || out.length() == 0L) return@coroutineScope null
         raw.delete()
+        out
+    }
+
+    /**
+     * YouTube video without yt-dlp: direct picture and sound links, both downloaded at once in parallel
+     * parts (the way a download manager does), then FFmpeg joins them into one .mp4 without re-encoding.
+     * Returns null to let the regular yt-dlp path take over (other sites, trimming, rare formats).
+     */
+    private suspend fun fastYouTubeVideo(task: DownloadTask, workDir: File): File? = coroutineScope {
+        if (task.kind != DownloadKind.VIDEO || task.edit != null) return@coroutineScope null
+        if (YouTubeFast.videoId(task.url) == null) return@coroutineScope null
+        val v = YouTubeFast.video(task.url, task.maxHeight ?: 2160, mp4Only = true) ?: return@coroutineScope null
+        if (v.video.contentLength <= 0 || v.audio.contentLength <= 0) return@coroutineScope null
+        val picture = File(workDir, "source.video.mp4")
+        val sound = File(workDir, "source.audio.m4a")
+        val total = v.video.contentLength + v.audio.contentLength
+        val done = java.util.concurrent.atomic.AtomicLongArray(2)
+        val speed = java.util.concurrent.atomic.AtomicLongArray(2)
+        fun report() {
+            val d = done.get(0) + done.get(1)
+            val bps = speed.get(0) + speed.get(1)
+            updateTask(task.id) {
+                if (it.status == DownloadStatus.CANCELED) it
+                else it.copy(
+                    status = DownloadStatus.DOWNLOADING,
+                    progress = (d.toFloat() / total).coerceIn(0f, 1f),
+                    etaSec = if (bps > 0) (total - d) / bps else 0,
+                    speedBps = bps,
+                    error = null,
+                )
+            }
+        }
+        val a = async {
+            ParallelHttp.download(v.video.url, v.headers, v.video.contentLength, picture, { isCanceled(task.id) }) { d, _, bps ->
+                done.set(0, d); speed.set(0, bps); report()
+            }
+        }
+        val b = async {
+            ParallelHttp.download(v.audio.url, v.headers, v.audio.contentLength, sound, { isCanceled(task.id) }) { d, _, bps ->
+                done.set(1, d); speed.set(1, bps); report()
+            }
+        }
+        val okPicture = a.await()
+        val okSound = b.await()
+        if (!okPicture || !okSound) {
+            if (isCanceled(task.id)) return@coroutineScope null
+            // Part of the file is already here — keep it and let the retry continue.
+            if (File(picture.path + ".chunks").isFile || File(sound.path + ".chunks").isFile) throw NetworkInterrupted()
+            return@coroutineScope null
+        }
+        updateTask(task.id) { it.copy(status = DownloadStatus.PROCESSING, progress = 1f, speedBps = 0) }
+        val title = task.title.ifBlank { v.title }
+        val artist = task.artist.ifBlank { v.author }
+        val out = File(workDir, MediaEditor.safeName(title.ifBlank { "video" }) + ".mp4")
+        val args = buildList {
+            add("-y"); add("-i"); add(picture.absolutePath); add("-i"); add(sound.absolutePath)
+            add("-map"); add("0:v:0"); add("-map"); add("1:a:0")
+            add("-c"); add("copy")
+            add("-metadata"); add("title=$title")
+            if (artist.isNotBlank()) { add("-metadata"); add("artist=$artist") }
+            add("-movflags"); add("+faststart")
+            add(out.absolutePath)
+        }
+        val code = FfmpegTool.run(context, args, v.durationSec * 1000L) {}.first
+        if (code != 0 || !out.isFile || out.length() == 0L) {
+            out.delete()
+            return@coroutineScope null
+        }
+        picture.delete()
+        sound.delete()
         out
     }
 

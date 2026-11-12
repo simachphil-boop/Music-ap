@@ -64,7 +64,6 @@ import app.vesper.player.ui.components.ArtSize
 import app.vesper.player.ui.components.bouncyClick
 import app.vesper.player.ui.components.themedShine
 import app.vesper.player.ui.components.Artwork
-import app.vesper.player.ui.components.EmptyState
 import app.vesper.player.ui.components.MediaTile
 import app.vesper.player.ui.components.OrnamentDivider
 import app.vesper.player.ui.components.OverlineText
@@ -91,6 +90,7 @@ fun HomeScreen() {
     val vids by vm.videos.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
     val previews by vm.playlistPreview.collectAsStateWithLifecycle()
+    val online by vm.transfer.playlists.collectAsStateWithLifecycle(initialValue = emptyList())
     val player by vm.player.state.collectAsStateWithLifecycle()
     val scanning by vm.scanning.collectAsStateWithLifecycle()
     vm.permissionVersion.collectAsStateWithLifecycle().value
@@ -136,14 +136,18 @@ fun HomeScreen() {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 12.dp),
                 ) {
-                    item { Shortcut(Icons.Rounded.Shuffle, "Перемешать") { vm.player.playTracks(lib.allTracks, shuffle = true) } }
+                    item {
+                        Shortcut(Icons.Rounded.Shuffle, "Перемешать") {
+                            if (lib.allTracks.isEmpty()) vm.message("На телефоне пока нет музыки — найдите песню в поиске или включите волну")
+                            else vm.player.playTracks(lib.allTracks, shuffle = true)
+                        }
+                    }
                     item {
                         Shortcut(Icons.Rounded.Favorite, "Избранное") {
                             if (lib.favorites.isEmpty()) vm.message("В избранном пока пусто — отмечайте треки сердцем")
                             else vm.player.playTracks(lib.favorites, 0, shuffle = false)
                         }
                     }
-                    item { Shortcut(Icons.Rounded.AutoAwesome, "Подбор") { ui.open(Routes.ASSISTANT) } }
                     item { Shortcut(Icons.Rounded.Whatshot, "Припевы") { ui.open(Routes.CHORUS_FEED) } }
                     item { Shortcut(Icons.Rounded.ShowChart, "Энергия") { ui.open(Routes.ENERGY_CURVE) } }
                     item { Shortcut(Icons.Rounded.SwapHoriz, "Из Яндекса") { ui.open(Routes.YANDEX_IMPORT) } }
@@ -155,41 +159,56 @@ fun HomeScreen() {
 
         item(key = "wave") { Appear(seen, "wave", 2) { WaveSection() }}
 
+        if (player.current != null && player.queueOwner != app.vesper.player.data.wave.WaveEngine.OWNER) {
+            item(key = "now") { Appear(seen, "now", 5) { NowPlayingCard(onOpen = { ui.playerExpanded = true }) }}
+        }
+
+        // Playlists that play from the internet: transferred, from the account's cloud copy, saved picks.
+        if (online.isNotEmpty()) {
+            item(key = "onHeader") { Appear(seen, "onHeader", 6) { SectionHeader("Онлайн-плейлисты", actionLabel = "Все", onAction = { ui.playlistKind = 2; ui.goToTab(Routes.PLAYLISTS) }) }}
+            item(key = "on") { Appear(seen, "on", 6) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(online.take(12), key = { it.id }) { p ->
+                        Column(Modifier.width(132.dp).clip(Vesper.shapes.small).clickable { ui.open(Routes.onlinePlaylist(p.id)) }) {
+                            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(Vesper.shapes.artwork).background(c.surfaceHigh)) {
+                                if (p.coverUrl != null) {
+                                    app.vesper.player.ui.components.RemoteImage(p.coverUrl, Modifier.fillMaxSize())
+                                } else {
+                                    Icon(Icons.Rounded.LibraryMusic, null, tint = c.textMuted, modifier = Modifier.align(Alignment.Center).size(36.dp))
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(p.name, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(tracksCount(p.itemCount), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                        }
+                    }
+                }
+            }}
+        }
+
         if (libraryEmpty) {
-            item(key = "empty") { Appear(seen, "empty", 4) {
+            item(key = "empty") { Appear(seen, "empty", 7) {
                 if (scanning) {
-                    EmptyState(
-                        icon = Icons.Rounded.LibraryMusic,
-                        title = "Собираю библиотеку…",
-                        message = "Ищу музыку и видео на устройстве. Это займёт несколько секунд.",
-                    )
+                    EmptyHint(Icons.Rounded.LibraryMusic, "Собираю библиотеку…", "Ищу музыку и видео на устройстве. Это займёт несколько секунд.")
                 } else if (!hasPermission) {
-                    EmptyState(
-                        icon = Icons.Rounded.Lock,
-                        title = "Нужен доступ к медиатеке",
-                        message = "Разрешите Floya Music читать музыку и видео на устройстве — или импортируйте отдельные файлы и папки вручную. Всё работает офлайн.",
-                        primaryLabel = "Разрешить доступ",
-                        onPrimary = actions.requestPermissions,
-                        secondaryLabel = "Импортировать файлы",
-                        onSecondary = actions.importAudio,
+                    EmptyHint(
+                        Icons.Rounded.Lock,
+                        "Музыка с телефона",
+                        "Разрешите доступ, чтобы здесь появились песни и видео с устройства. Онлайн-музыка работает и без этого.",
+                        "Разрешить доступ", actions.requestPermissions,
+                        "Импортировать файлы", actions.importAudio,
                     )
                 } else {
-                    EmptyState(
-                        icon = Icons.Rounded.LibraryAdd,
-                        title = "Библиотека пуста",
-                        message = "На устройстве не нашлось аудио и видео. Импортируйте файлы или целую папку — Floya Music запомнит их без копирования.",
-                        primaryLabel = "Импортировать файлы",
-                        onPrimary = actions.importAudio,
-                        secondaryLabel = "Выбрать папку",
-                        onSecondary = actions.importFolder,
+                    EmptyHint(
+                        Icons.Rounded.LibraryAdd,
+                        "На телефоне пока нет музыки",
+                        "Слушайте онлайн через поиск и волну, скачивайте по ссылке — или добавьте свои файлы.",
+                        "Импортировать файлы", actions.importAudio,
+                        "Выбрать папку", actions.importFolder,
                     )
                 }
             }}
             return@LazyColumn
-        }
-
-        if (player.current != null && player.queueOwner != app.vesper.player.data.wave.WaveEngine.OWNER) {
-            item(key = "now") { Appear(seen, "now", 5) { NowPlayingCard(onOpen = { ui.playerExpanded = true }) }}
         }
 
         if (lib.recentlyPlayed.isNotEmpty()) {
@@ -338,30 +357,35 @@ private fun HomeHeader(trackCount: Int, videoCount: Int) {
             }
             HeaderIcon(Icons.Rounded.Insights, "Твой вайб") { ui.open(Routes.STATS) }
             Spacer(Modifier.width(4.dp))
-            // Profile: initial of the account, or a sign-in prompt.
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (session != null) c.accent else c.surfaceHigh)
-                    .border(1.dp, if (session != null) c.ornament else c.outline, androidx.compose.foundation.shape.CircleShape)
-                    .clickable { ui.open(Routes.ACCOUNT) },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (name != null) {
-                    Text(name.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.onAccent)
-                } else {
-                    Icon(Icons.Rounded.Person, "Войти в аккаунт", tint = c.textSecondary, modifier = Modifier.size(22.dp))
-                }
-            }
-            if (session != null) {
+            // Profile: initial of the account (with a small cloud-status dot), or a sign-in prompt.
+            Box(Modifier.size(42.dp), contentAlignment = Alignment.Center) {
                 Box(
                     Modifier
-                        .padding(start = 0.dp)
-                        .size(8.dp)
+                        .size(40.dp)
                         .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(if (sync.error != null) c.danger else c.accentBright),
-                )
+                        .background(if (session != null) c.accent else c.surfaceHigh)
+                        .border(1.dp, if (session != null) c.ornament else c.outline, androidx.compose.foundation.shape.CircleShape)
+                        .clickable { ui.open(Routes.ACCOUNT) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (name != null) {
+                        Text(name.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.onAccent)
+                    } else {
+                        Icon(Icons.Rounded.Person, "Войти в аккаунт", tint = c.textSecondary, modifier = Modifier.size(22.dp))
+                    }
+                }
+                if (session != null) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(12.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(c.background)
+                            .padding(2.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (sync.error != null) c.danger else c.accentBright),
+                    )
+                }
             }
         }
         if (ornament == Ornament.GOTHIC || ornament == Ornament.NEON) {
@@ -412,6 +436,47 @@ private fun NowPlayingCard(onOpen: () -> Unit) {
         }
         Spacer(Modifier.width(12.dp))
         PlayPauseButton(state.isPlaying, onClick = { vm.player.togglePlayPause() }, size = 42.dp)
+    }
+}
+
+/** A compact note with up to two actions — unlike a full-screen empty state it leaves the rest of the screen usable. */
+@Composable
+private fun EmptyHint(
+    icon: ImageVector,
+    title: String,
+    message: String,
+    primaryLabel: String? = null,
+    onPrimary: (() -> Unit)? = null,
+    secondaryLabel: String? = null,
+    onSecondary: (() -> Unit)? = null,
+) {
+    val c = Vesper.colors
+    Column(
+        Modifier
+            .padding(horizontal = 20.dp)
+            .padding(top = 18.dp)
+            .fillMaxWidth()
+            .clip(Vesper.shapes.medium)
+            .background(c.surface)
+            .border(1.dp, c.outline, Vesper.shapes.medium)
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = c.ornament, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(message, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+        if (primaryLabel != null && onPrimary != null) {
+            Spacer(Modifier.height(12.dp))
+            // One under another: two buttons side by side don't fit on a narrow phone.
+            app.vesper.player.ui.components.PrimaryButton(primaryLabel, onClick = onPrimary, modifier = Modifier.fillMaxWidth())
+            if (secondaryLabel != null && onSecondary != null) {
+                Spacer(Modifier.height(8.dp))
+                app.vesper.player.ui.components.SecondaryButton(secondaryLabel, onClick = onSecondary, modifier = Modifier.fillMaxWidth())
+            }
+        }
     }
 }
 

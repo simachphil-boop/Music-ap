@@ -129,6 +129,10 @@ fun VideoPlayerScreen(
     var speed by remember { mutableFloatStateOf(initialSpeed) }
     var speedSheet by remember { mutableStateOf(false) }
     var aspectSheet by remember { mutableStateOf(false) }
+    var qualitySheet by remember { mutableStateOf(false) }
+    val online = activity.onlineUrl != null
+    val opening = activity.onlineLoading
+    val shownTitle = title.ifBlank { activity.onlineTitle }
     var scrub by remember { mutableStateOf<Float?>(null) }
 
     var hud by remember { mutableStateOf(Hud.NONE) }
@@ -153,6 +157,8 @@ fun VideoPlayerScreen(
             override fun onEvents(p: Player, events: Player.Events) {
                 isPlaying = p.isPlaying
                 buffering = p.playbackState == Player.STATE_BUFFERING
+                // Playback recovered (fresh links after an error) — the old message no longer applies.
+                if (p.playbackState == Player.STATE_READY && p.playerError == null) error = null
                 title = p.mediaMetadata.title?.toString().orEmpty()
                 hasNext = p.hasNextMediaItem()
                 hasPrev = p.hasPreviousMediaItem()
@@ -297,7 +303,26 @@ fun VideoPlayerScreen(
             HudBubble(hud, hudValue)
         }
 
-        if (buffering && error == null) {
+        val openError = activity.onlineError
+        if (opening && openError == null) {
+            // Links are being fetched: say what is happening instead of a silent black screen.
+            Column(Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.compose.material3.CircularProgressIndicator(color = c.accentBright, strokeWidth = 3.dp, modifier = Modifier.size(44.dp))
+                Spacer(Modifier.height(14.dp))
+                Text("Открываю видео…", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                if (activity.onlineTitle.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        activity.onlineTitle,
+                        color = Color(0xB3FFFFFF),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        } else if (buffering && error == null && openError == null) {
             androidx.compose.material3.CircularProgressIndicator(
                 color = c.accentBright,
                 strokeWidth = 3.dp,
@@ -305,7 +330,35 @@ fun VideoPlayerScreen(
             )
         }
 
-        error?.let { msg ->
+        if (openError != null) {
+            Column(
+                Modifier.align(Alignment.Center).padding(32.dp).clip(Vesper.shapes.large).background(Color(0xE6000000)).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Rounded.ErrorOutline, null, tint = c.danger, modifier = Modifier.size(36.dp))
+                Spacer(Modifier.height(10.dp))
+                Text("Не удалось открыть видео", color = Color.White, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(4.dp))
+                Text(openError, color = Color(0xCCFFFFFF), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Повторить",
+                        color = c.accentBright,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.clip(Vesper.shapes.chip).clickable { activity.retryOnline() }.padding(10.dp),
+                    )
+                    Text(
+                        "Закрыть",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.clip(Vesper.shapes.chip).clickable(onClick = onClose).padding(10.dp),
+                    )
+                }
+            }
+        }
+
+        error?.takeIf { !opening && openError == null }?.let { msg ->
             Column(
                 Modifier.align(Alignment.Center).padding(32.dp).clip(Vesper.shapes.large).background(Color(0xE6000000)).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -365,22 +418,36 @@ fun VideoPlayerScreen(
                 ) {
                     PressableIcon(Icons.Rounded.ArrowBack, "Назад", onClick = onClose, tint = Color.White)
                     Text(
-                        title,
+                        shownTitle,
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     )
-                    PressableIcon(
-                        if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        "Избранное",
-                        onClick = {
-                            touch()
-                            activity.toggleFavorite { favorite = it }
-                        },
-                        tint = if (favorite) c.accentBright else Color.White,
-                    )
+                    if (!online) {
+                        PressableIcon(
+                            if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            "Избранное",
+                            onClick = {
+                                touch()
+                                activity.toggleFavorite { favorite = it }
+                            },
+                            tint = if (favorite) c.accentBright else Color.White,
+                        )
+                    } else if (activity.onlineHeights.size > 1) {
+                        // Online video: picture quality instead of the (file-only) favourite mark.
+                        Text(
+                            "${activity.onlineHeight}p",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier
+                                .clip(Vesper.shapes.chip)
+                                .background(Color(0x33FFFFFF))
+                                .clickable { touch(); qualitySheet = true }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
                     PressableIcon(Icons.Rounded.Speed, "Скорость", onClick = { touch(); speedSheet = true }, tint = Color.White)
                     PressableIcon(Icons.Rounded.AspectRatio, "Соотношение сторон", onClick = { touch(); aspectSheet = true }, tint = Color.White)
                     PressableIcon(Icons.Rounded.PictureInPictureAlt, "Картинка в картинке", onClick = { activity.enterPip() }, tint = Color.White)
@@ -474,6 +541,16 @@ fun VideoPlayerScreen(
                 player.playbackParameters = PlaybackParameters(speed)
                 activity.saveSpeed(speed)
             },
+        )
+    }
+    if (qualitySheet) {
+        val heights = activity.onlineHeights
+        ChoiceSheet(
+            title = "Качество видео",
+            options = heights.map { h -> if (h >= 1440) "${h}p · нужен быстрый интернет" else "${h}p" },
+            selected = heights.indexOf(activity.onlineHeight),
+            onDismiss = { qualitySheet = false },
+            onSelect = { activity.setOnlineQuality(heights[it]) },
         )
     }
     if (aspectSheet) {

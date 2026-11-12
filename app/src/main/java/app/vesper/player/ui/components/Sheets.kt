@@ -2,6 +2,8 @@ package app.vesper.player.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -352,18 +354,21 @@ fun ChoiceSheet(
     val c = Vesper.colors
     VesperSheet(onDismiss) { dismiss ->
         Text(title, style = MaterialTheme.typography.headlineSmall, color = c.textPrimary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        options.forEachIndexed { i, label ->
-            Row(
-                Modifier.fillMaxWidth().clickable { dismiss { onSelect(i) } }.padding(horizontal = 24.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (i == selected) c.accentBright else c.textPrimary,
-                    modifier = Modifier.weight(1f),
-                )
-                if (i == selected) Icon(Icons.Rounded.Check, null, tint = c.accentBright)
+        // Scrolls when the list is taller than the screen (a phone held sideways).
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+            options.forEachIndexed { i, label ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { dismiss { onSelect(i) } }.padding(horizontal = 24.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (i == selected) c.accentBright else c.textPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (i == selected) Icon(Icons.Rounded.Check, null, tint = c.accentBright)
+                }
             }
         }
         Spacer(Modifier.height(4.dp))
