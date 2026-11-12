@@ -172,13 +172,7 @@ class VideoPlayerActivity : ComponentActivity() {
         loadPlaylist()
     }
 
-    /** 1080p on Wi‑Fi, 720p on mobile data — unless the user picked a quality before. */
-    private fun defaultOnlineHeight(): Int {
-        videoPrefs.getInt("online_height", 0).takeIf { it > 0 }?.let { return it }
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
-        val metered = runCatching { cm?.isActiveNetworkMetered }.getOrNull() ?: true
-        return if (metered) 720 else 1080
-    }
+    private fun defaultOnlineHeight(): Int = app.vesper.player.playback.YouTubeFast.defaultHeight(this)
 
     /** Switches the picture quality of the online video and continues from the same place. */
     fun setOnlineQuality(height: Int) {

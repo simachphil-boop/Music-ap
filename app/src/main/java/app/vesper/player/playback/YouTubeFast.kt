@@ -219,6 +219,24 @@ object YouTubeFast {
 
     private val videoCache = java.util.concurrent.ConcurrentHashMap<String, Video>()
 
+    /** Picture height used when the user hasn't chosen one: 1080p on Wi‑Fi, 720p on mobile data. */
+    fun defaultHeight(context: android.content.Context): Int {
+        context.getSharedPreferences("floya_video", android.content.Context.MODE_PRIVATE).getInt("online_height", 0)
+            .takeIf { it > 0 }?.let { return it }
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val metered = runCatching { cm?.isActiveNetworkMetered }.getOrNull() ?: true
+        return if (metered) 720 else 1080
+    }
+
+    private val warmPool = java.util.concurrent.Executors.newFixedThreadPool(2)
+
+    /** Fetches the links for a video ahead of time (search results), so a tap opens it at once. */
+    fun prewarmVideo(context: android.content.Context, pageUrl: String) {
+        if (videoId(pageUrl) == null) return
+        val height = defaultHeight(context.applicationContext)
+        warmPool.execute { runCatching { video(pageUrl, height) } }
+    }
+
     /**
      * Direct picture + sound links in one quick request, no yt-dlp. Picks the best height not above
      * [maxHeight]; H.264 is preferred because every phone decodes it in hardware. With [mp4Only] the

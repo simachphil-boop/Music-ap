@@ -119,6 +119,11 @@ fun SearchScreen(onBack: () -> Unit) {
         list.take(3).forEach { StreamResolver.prefetch(context, it.url, allowSlow = false) }
     }
 
+    /** Same for videos: the links of the first two are fetched ahead, so they open without a wait. */
+    fun prefetchVideos(list: List<SearchResult>) {
+        list.take(2).forEach { app.vesper.player.playback.YouTubeFast.prewarmVideo(context, it.url) }
+    }
+
     fun run(q: String = query, t: Int = tab) {
         val text = q.trim()
         if (text.isEmpty()) return
@@ -140,10 +145,11 @@ fun SearchScreen(onBack: () -> Unit) {
                     if (songs.isNotEmpty()) loading = false
                     val vr = v.await()
                     videos = vr.getOrDefault(emptyList())
+                    prefetchVideos(videos)
                     if (sr.isFailure && vr.isFailure) error = vr.exceptionOrNull()?.message ?: "Поиск не удался"
                 }
                 1 -> vm.webSearch.songs(text).onSuccess { songs = it; prefetchTop(it) }.onFailure { error = it.message }
-                2 -> vm.webSearch.videos(text).onSuccess { videos = it }.onFailure { error = it.message }
+                2 -> vm.webSearch.videos(text).onSuccess { videos = it; prefetchVideos(it) }.onFailure { error = it.message }
                 4 -> vm.webSearch.other(text, SearchSource.SOUNDCLOUD).onSuccess { others = it }.onFailure { error = it.message }
                 5 -> vm.webSearch.other(text, SearchSource.ARCHIVE).onSuccess { others = it }.onFailure { error = it.message }
             }

@@ -46,7 +46,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -135,7 +137,18 @@ fun VesperRoot(vm: MainViewModel, actions: AppActions, openPlayerSignal: Int) {
         LocalBottomInset provides bottomInset,
     ) {
         Box(Modifier.fillMaxSize().background(c.background)) {
-            if (appSettings.ambience) {
+            // Once the full-screen player covers everything (it draws its own background animation),
+            // this one is switched off — no reason to animate two full-screen layers at once.
+            var covered by remember { mutableStateOf(false) }
+            LaunchedEffect(ui.playerExpanded) {
+                if (ui.playerExpanded) {
+                    kotlinx.coroutines.delay(450)
+                    covered = true
+                } else {
+                    covered = false
+                }
+            }
+            if (appSettings.ambience && !covered) {
                 app.vesper.player.ui.theme.ThemeAmbience(Modifier.fillMaxSize(), playing = playerState.isPlaying, intensity = 0.8f)
             }
             VesperNavHost(nav)
