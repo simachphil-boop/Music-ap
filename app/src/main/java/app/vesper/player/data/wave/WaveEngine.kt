@@ -122,10 +122,10 @@ class WaveEngine(
         if (active && !extending && !_state.value.starting && s.queue.isNotEmpty() && s.queue.size - 1 - s.currentIndex <= 2) {
             extending = true
             val vibe = _state.value.vibe ?: Vibes.myWave
-            val online = s.queue.any { it.online }
+            val streaming = s.queue.any { it.online }
             scope.launch {
                 try {
-                    if (online) {
+                    if (streaming) {
                         val exclude = s.queue.mapNotNull { it.pageUrl }.toSet()
                         player.addOnline(online.pick(vibe, 8, exclude))
                     } else {
